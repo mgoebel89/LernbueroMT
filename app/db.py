@@ -100,6 +100,114 @@ MIGRATIONEN = [
     CREATE INDEX ereignis_klasse ON ereignis (klasse_id, id);
     CREATE INDEX ereignis_schueler ON ereignis (schueler_id, id);
     """,
+    # 2: Unterrichtstage und Lernpakete (Stufe B). Datum als ISO-Text, Uhrzeit als HH:MM. Nichts wird geloescht, was
+    # Schueler schon sehen koennten: Regeln, Tage, Aufgaben werden deaktiviert (aktiv = 0).
+    """
+    CREATE TABLE unterrichtsregel (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        wochentag INTEGER NOT NULL CHECK (wochentag BETWEEN 0 AND 6),
+        rhythmus TEXT NOT NULL DEFAULT 'jede' CHECK (rhythmus IN ('jede', 'gerade', 'ungerade')),
+        von TEXT NOT NULL,
+        bis TEXT NOT NULL,
+        gueltig_von TEXT NOT NULL,
+        gueltig_bis TEXT NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1,
+        erstellt TEXT NOT NULL);
+    CREATE TABLE tag_besonders (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        von TEXT NOT NULL,
+        bis TEXT NOT NULL,
+        art TEXT NOT NULL CHECK (art IN ('ausfall', 'ohne')),
+        grund TEXT NOT NULL,
+        wer TEXT NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1,
+        erstellt TEXT NOT NULL);
+    CREATE TABLE ferien (
+        id INTEGER PRIMARY KEY,
+        von TEXT NOT NULL,
+        bis TEXT NOT NULL,
+        name TEXT NOT NULL,
+        quelle TEXT NOT NULL DEFAULT 'hand' CHECK (quelle IN ('hand', 'abo')),
+        aktiv INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE kalender_abo (
+        id INTEGER PRIMARY KEY,
+        art TEXT NOT NULL CHECK (art IN ('dienst', 'schule')),
+        lehrkraft_id INTEGER REFERENCES lehrkraft(id),
+        url TEXT NOT NULL,
+        versuch TEXT,
+        stand TEXT,
+        fehler TEXT,
+        anzahl INTEGER NOT NULL DEFAULT 0);
+    CREATE UNIQUE INDEX kalender_abo_wer ON kalender_abo (art, COALESCE(lehrkraft_id, 0));
+    CREATE TABLE kalender_termin (
+        abo_id INTEGER NOT NULL REFERENCES kalender_abo(id) ON DELETE CASCADE,
+        beginn TEXT NOT NULL,
+        ende TEXT NOT NULL,
+        ganztags INTEGER NOT NULL DEFAULT 0,
+        titel TEXT NOT NULL,
+        ort TEXT NOT NULL DEFAULT '');
+    CREATE INDEX kalender_termin_zeit ON kalender_termin (abo_id, beginn);
+    CREATE TABLE paket (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER REFERENCES klasse(id) ON DELETE CASCADE,
+        besitzer_id INTEGER REFERENCES lehrkraft(id),
+        titel TEXT NOT NULL,
+        lernfeld TEXT NOT NULL DEFAULT '',
+        freigabe TEXT,
+        frist TEXT,
+        archiviert INTEGER NOT NULL DEFAULT 0,
+        aus_paket_id INTEGER,
+        erstellt TEXT NOT NULL);
+    CREATE INDEX paket_klasse ON paket (klasse_id);
+    CREATE TABLE wahlgruppe (
+        id INTEGER PRIMARY KEY,
+        paket_id INTEGER NOT NULL REFERENCES paket(id) ON DELETE CASCADE,
+        buchstabe TEXT NOT NULL,
+        titel TEXT NOT NULL DEFAULT '',
+        waehlen INTEGER NOT NULL DEFAULT 1,
+        frist TEXT,
+        pos INTEGER NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE aufgabe (
+        id INTEGER PRIMARY KEY,
+        paket_id INTEGER NOT NULL REFERENCES paket(id) ON DELETE CASCADE,
+        kuerzel TEXT NOT NULL,
+        titel TEXT NOT NULL,
+        art TEXT NOT NULL CHECK (art IN ('pflicht', 'wahl', 'zusatz')),
+        wahlgruppe_id INTEGER REFERENCES wahlgruppe(id),
+        zusatz_art TEXT CHECK (zusatz_art IN ('vertiefung', 'wiederholung')),
+        frist TEXT,
+        moodle_link TEXT NOT NULL DEFAULT '',
+        voraussetzung_id INTEGER REFERENCES aufgabe(id),
+        pos INTEGER NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1,
+        erstellt TEXT NOT NULL);
+    CREATE INDEX aufgabe_paket ON aufgabe (paket_id);
+    CREATE TABLE kann_aussage (
+        id INTEGER PRIMARY KEY,
+        paket_id INTEGER NOT NULL REFERENCES paket(id) ON DELETE CASCADE,
+        kuerzel TEXT NOT NULL,
+        text TEXT NOT NULL,
+        pos INTEGER NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE kann_aufgabe (
+        kann_id INTEGER NOT NULL REFERENCES kann_aussage(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        PRIMARY KEY (kann_id, aufgabe_id));
+    CREATE TABLE nachweis (
+        id INTEGER PRIMARY KEY,
+        paket_id INTEGER NOT NULL REFERENCES paket(id) ON DELETE CASCADE,
+        titel TEXT NOT NULL DEFAULT '',
+        art TEXT NOT NULL CHECK (art IN ('moodle', 'praxis', 'fachgespraech')),
+        ergebnis TEXT NOT NULL DEFAULT 'gelungen' CHECK (ergebnis IN ('gelungen', 'punkte', 'note')),
+        max_punkte INTEGER,
+        frist TEXT,
+        moodle_link TEXT NOT NULL DEFAULT '',
+        pos INTEGER NOT NULL,
+        aktiv INTEGER NOT NULL DEFAULT 1)
+    """,
 ]
 
 

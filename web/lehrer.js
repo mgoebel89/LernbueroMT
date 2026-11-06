@@ -7,6 +7,7 @@ const inhalt = document.getElementById('inhalt');
 const NAV = [
   { a: 'uebersicht', text: 'Übersicht', s: 'uebersicht' },
   { a: 'klassen', text: 'Klassen', s: 'klassen' },
+  { a: 'pakete', text: 'Pakete', s: 'pakete' },
   { a: 'archiv', text: 'Archiv', s: 'archiv' },
   { a: 'lehrkraefte', text: 'Lehrkräfte', s: 'lehrkraefte', admin: true },
   { a: 'einstellungen', text: 'Einstellungen', s: 'einstellungen', admin: true },
@@ -68,10 +69,12 @@ async function start() {
 
 async function zeigen() {
   const [ansicht, id] = (location.hash.slice(1) || 'uebersicht').split('/');
-  const nav = ansicht === 'klasse' ? 'klassen' : ansicht;
+  const nav = ansicht === 'klasse' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht;
   document.querySelectorAll('nav.seite a').forEach(a => a.classList.toggle('an', a.dataset.ansicht === nav));
   try {
     if (ansicht === 'uebersicht') await uebersichtZeigen();
+    else if (ansicht === 'pakete') await Pakete.uebersicht(Number(id) || null);
+    else if (ansicht === 'paket') await Pakete.editor(Number(id));
     else if (ansicht === 'klassen') await klassenZeigen(false);
     else if (ansicht === 'archiv') await klassenZeigen(true);
     else if (ansicht === 'klasse') await klasseZeigen(Number(id));
@@ -157,7 +160,8 @@ async function klasseZeigen(kid) {
     el('h1', { class: 'dreieck', text: k.name }), rolleChip(k.rolle), k.archiviert ? el('span', { class: 'chip', text: 'archiviert' }) : null,
     team ? el('button', { type: 'button', onclick: () => moodleAssistent(k) }, L.symbol('hoch'), 'Moodle-Teilnehmerliste') : null,
     team ? el('button', { type: 'button', onclick: () => karten(k.id) }, L.symbol('laden'), 'QR-Karten (PDF)') : null,
-    team ? el('button', { type: 'button', onclick: () => klasseBearbeiten(k) }, 'Bearbeiten') : null);
+    team ? el('button', { type: 'button', onclick: () => klasseBearbeiten(k) }, 'Bearbeiten') : null,
+    k.rolle !== 'admin' ? el('a', { class: 'knopf', href: '#pakete/' + k.id }, L.symbol('pakete'), 'Pakete') : null);
 
   const personen = (liste, rolle) => el('div', { class: 'personen' }, liste.length ? liste.map(p =>
     el('span', { class: 'person' }, p.name + ' (' + p.kuerzel.toUpperCase() + ')',
@@ -184,7 +188,7 @@ async function klasseZeigen(kid) {
     el('div', { class: 'daten leise klein', text: [k.schuljahr && 'Schuljahr ' + k.schuljahr, k.moodle_kurs && 'Moodle-Kurs: ' + k.moodle_kurs].filter(Boolean).join(' · ') || 'Kein Schuljahr eingetragen.' }),
     L.feld('Einschätzer der Kann-Listen', darstellung, 'gilt für alle Schüler der Klasse, umschalten geht jederzeit'));
 
-  teile.push(el('div', { class: 'zwei-spalten' }, lehrkraftKarte, einstellung), schuelerKarte(k));
+  teile.push(el('div', { class: 'zwei-spalten' }, lehrkraftKarte, einstellung), Tage.karte(k), schuelerKarte(k));
   L.setzen(inhalt, teile);
 }
 
@@ -424,7 +428,8 @@ async function einstellungenZeigen() {
         el('p', { class: 'leise klein', text: 'Die ganze Datenbank als ZIP. Vor jedem Update legt der Container zusätzlich selbst eine Sicherung an (die letzten fünf bleiben).' }),
         el('div', {}, el('button', { type: 'button', onclick: () => L.herunterladen('/api/sicherung.zip').catch(f => L.meldung(f.message, true)) }, L.symbol('laden'), 'Sicherung herunterladen')),
         u.sicherungen.length ? el('div', { class: 'stapel', style: 'gap:4px' }, u.sicherungen.map(s =>
-          el('a', { href: '/api/update/sicherung/' + s.name, class: 'klein', text: s.name + ' (' + Math.round(s.groesse / 1024) + ' KB)' }))) : null)));
+          el('a', { href: '/api/update/sicherung/' + s.name, class: 'klein', text: s.name + ' (' + Math.round(s.groesse / 1024) + ' KB)' }))) : null),
+      Tage.ferienKarte()));
 }
 
 async function updateAnfordern(art) {

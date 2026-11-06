@@ -83,6 +83,12 @@ const L = {
     plus: 'M12 5v14M5 12h14',
     qr: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4z',
     auge: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7ZM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6',
+    pakete: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z',
+    kalender: 'M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M3 10h18',
+    hoch_pfeil: 'M12 19V5M5 12l7-7 7 7',
+    runter_pfeil: 'M12 5v14M19 12l-7 7-7-7',
+    extern: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+    kopie: 'M8 8h12v12H8zM16 8V4H4v12h4',
   },
 
   symbol(name) {
@@ -122,6 +128,27 @@ const L = {
       const erstes = form.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
       if (erstes) erstes.focus();
     });
+  },
+
+  TAGE: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+  // '2026-11-05' -> 'Do 05.11.'; mit jahr -> 'Do 05.11.2026'
+  tag(iso, jahr) {
+    if (!iso) return '';
+    const d = new Date(iso.slice(0, 10) + 'T12:00:00');
+    return L.TAGE[d.getDay()] + ' ' + iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + (jahr ? iso.slice(0, 4) : '');
+  },
+  heute() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  },
+
+  // Knopf in einem Overlay, der das Overlay schliesst und danach etwas anderes tut (z. B. "Entfernen …" mit Rueckfrage)
+  nebenknopf(text, aktion, klasse = 'warnen klein') {
+    const k = L.el('button', { type: 'button', class: klasse, text, onclick: () => {
+      k.closest('dialog').dispatchEvent(new Event('cancel'));
+      setTimeout(aktion, 0);
+    } });
+    return k;
   },
 
   feld(beschriftung, eingabe, hilfe) {

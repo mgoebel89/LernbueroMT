@@ -12,8 +12,8 @@ werden daraus berechnet. Inhalte, Abgaben und Tests bleiben in Moodle.
 
 | Stufe | Inhalt | Stand |
 |---|---|---|
-| A | Grundgerüst: Installation, Lehrkraft-Konten, HTTPS für den Lehrerbereich, HTTP für die Schülerseiten, Firewall, Update und Sicherung aus dem Lehrerbereich; Klassen mit Team und Einsicht; Moodle-Teilnehmerliste mit Zuordnungstabelle; Zugangscodes, QR-Codes und QR-Karten als PDF; Schülerseite mit der Symbol-Leiste | gebaut (0.1.0) |
-| B | Unterrichtstage und Pakete: Regeln, Schulkalender, Ausfall und „ohne Sie“; Paket-Editor mit Pflicht-, Wahl- und Zusatzaufgaben, Kann-Liste, Fristen, Gelingensnachweis | geplant |
+| A | Grundgerüst: Installation, Lehrkraft-Konten, HTTPS für den Lehrerbereich, HTTP für die Schülerseiten, Firewall, Update und Sicherung aus dem Lehrerbereich; Klassen mit Team und Einsicht; Moodle-Teilnehmerliste mit Zuordnungstabelle; Zugangscodes, QR-Codes und QR-Karten als PDF; Schülerseite mit der Symbol-Leiste | gebaut (0.1.1) |
+| B | Unterrichtstage als Regeln (Wochentag, jede/gerade/ungerade KW), Ferien aus dem Schulkalender-Abo oder von Hand, „fällt aus“ und „findet statt, ohne Sie“; Paket-Editor mit Pflichtaufgaben, Wahlgruppen, Zusatzaufgaben, Kann-Liste, Gelingensnachweis, Fristen (Aufgabe vor Gruppe vor Paket, rutschen auf den nächsten Unterrichtstag), Freigabe ab einem Unterrichtstag, Kopieren in eine Klasse oder als eigene Vorlage | gebaut (0.2.0) |
 | C | Lernplan der Schüler: Raster, Wahl, Heute, Tagesabschluss mit Ampel je Aufgabe, Kann-Liste vorher, Klassenmatrix | geplant |
 | D | Melden, Rückmeldung mit Diktat (Whisper im Container), Empfehlungen, Hilfe-Knopf, Sprechzeiten | geplant |
 | E | Gelingensnachweise: Bereitmeldung, Prüfungszeiten, Ergebnisse | geplant |
@@ -87,7 +87,7 @@ ausdrücklichen Wunsch archiviert.
 
 ## Entwicklung
 
-Python 3.11 oder neuer, ohne Zusatzpakete (QR-Codes und PDF schreibt das Programm selbst). Im Repo-Ordner:
+Python 3.11 oder neuer. QR-Codes und PDF schreibt das Programm selbst; für das Schulkalender-Abo `icalendar` und `recurring-ical-events` (im Container `python3-icalendar`, `python3-recurring-ical-events`, die Installation holt sie; ohne sie läuft alles andere weiter). Im Repo-Ordner:
 
 ```bash
 python -m unittest discover -s tests

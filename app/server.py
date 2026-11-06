@@ -20,7 +20,10 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import VERSION, db, klassen, konten, moodle, pdf, qr, updates
+import datetime
+import time
+
+from . import VERSION, db, kalender, klassen, konten, moodle, pakete, pdf, qr, unterrichtstage, updates
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -205,7 +208,8 @@ class Handler(BaseHTTPRequestHandler):
             self.antwort(f.status, {"fehler": f.meldung})
         except klassen.KeinZugriff as f:
             self.antwort(403, {"fehler": str(f)})
-        except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler) as f:
+        except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
+                unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -450,6 +454,137 @@ def api_qr_svg(h, con, daten, kid, sid):
     h.antwort(200, qr.svg(url).encode("utf-8"), "image/svg+xml; charset=utf-8", extra=[("X-Adresse", url)])
 
 
+# --- Unterrichtstage (Stufe B) ---
+
+def _zeitraum(h, vor=14, nach=84):
+    heute = db.heute()
+    von = h.abfrage("von") or (heute - datetime.timedelta(days=vor)).isoformat()
+    bis = h.abfrage("bis") or (heute + datetime.timedelta(days=nach)).isoformat()
+    von, bis = unterrichtstage.datum(von), unterrichtstage.datum(bis)
+    if (bis - von).days > 400:
+        raise Fehler(400, "Höchstens 400 Tage auf einmal.")
+    return von, bis
+
+
+def api_tage(h, con, daten, kid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    klassen.pruefen(con, kid, k, "lesen")
+    von, bis = _zeitraum(h)
+    h.antwort(200, {"regeln": unterrichtstage.regeln(con, kid), "besondere": unterrichtstage.besondere(con, kid, von.isoformat()),
+                    "tage": unterrichtstage.tage(con, kid, von, bis), "heute": db.heute().isoformat(),
+                    "schuljahr": [d.isoformat() for d in unterrichtstage.schuljahr_grenzen()]})
+
+
+def api_regel_anlegen(h, con, daten, kid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.regel_anlegen(con, k, _ganzzahl(kid), daten)
+    api_tage(h, con, {}, kid)
+
+
+def api_regel_aendern(h, con, daten, kid, rid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.regel_aendern(con, k, _ganzzahl(kid), _ganzzahl(rid), daten)
+    api_tage(h, con, {}, kid)
+
+
+def api_besonders_anlegen(h, con, daten, kid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.besonders_anlegen(con, k, _ganzzahl(kid), daten)
+    api_tage(h, con, {}, kid)
+
+
+def api_besonders_entfernen(h, con, daten, kid, bid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.besonders_entfernen(con, k, _ganzzahl(kid), _ganzzahl(bid))
+    api_tage(h, con, {}, kid)
+
+
+def api_ferien(h, con, daten):
+    h.konto(con)
+    h.antwort(200, {"ferien": unterrichtstage.ferien_liste(con, (db.heute() - datetime.timedelta(days=60)).isoformat()),
+                    "schulkalender": kalender.abo_status(con, "schule"),
+                    "stichwoerter": db.einstellung(con, "schulkalender_stichwoerter", kalender.STICHWOERTER),
+                    "pakete_da": kalender.icalendar is not None})
+
+
+def api_ferien_anlegen(h, con, daten):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.ferien_anlegen(con, k, daten)
+    api_ferien(h, con, {})
+
+
+def api_ferien_entfernen(h, con, daten, fid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        unterrichtstage.ferien_entfernen(con, k, _ganzzahl(fid))
+    api_ferien(h, con, {})
+
+
+def api_schulkalender(h, con, daten):
+    _admin(h, con)
+    if "stichwoerter" in daten:
+        woerter = ", ".join(w.strip() for w in str(daten["stichwoerter"] or "").split(",") if w.strip())[:300]
+        db.einstellung_setzen(con, "schulkalender_stichwoerter", woerter or kalender.STICHWOERTER)
+    if daten.get("url"):
+        kalender.abo_setzen(con, "schule", None, daten["url"])
+    elif daten.get("abrufen"):
+        kalender.abrufen(con, "schule")
+    api_ferien(h, con, {})
+
+
+def api_schulkalender_entfernen(h, con, daten):
+    _admin(h, con)
+    kalender.abo_entfernen(con, "schule", None)
+    api_ferien(h, con, {})
+
+
+# --- Lernpakete (Stufe B) ---
+
+def api_pakete(h, con, daten, kid):
+    h.antwort(200, {"pakete": pakete.liste(con, h.konto(con), _ganzzahl(kid))})
+
+
+def api_vorlagen(h, con, daten):
+    h.antwort(200, {"vorlagen": pakete.vorlagen(con, h.konto(con))})
+
+
+def api_paket_anlegen(h, con, daten):
+    k = h.konto(con)
+    kid = daten.get("klasse_id")
+    with db.transaktion(con):
+        pid = pakete.anlegen(con, k, _ganzzahl(kid) if kid is not None else None, daten.get("titel"), daten.get("lernfeld"))
+    h.antwort(200, {"paket": pakete.holen(con, k, pid)})
+
+
+def api_paket(h, con, daten, pid):
+    h.antwort(200, {"paket": pakete.holen(con, h.konto(con), _ganzzahl(pid))})
+
+
+def _paket_schritt(funktion):
+    """POST-Schnittstelle, die etwas am Paket aendert und das ganze Paket zurueckgibt."""
+    def api(h, con, daten, pid, *ids):
+        k = h.konto(con)
+        pid = _ganzzahl(pid)
+        with db.transaktion(con):
+            funktion(con, k, pid, *[_ganzzahl(i) for i in ids], daten)
+        h.antwort(200, {"paket": pakete.holen(con, k, pid)})
+    return api
+
+
+def api_paket_kopieren(h, con, daten, pid):
+    k = h.konto(con)
+    ziel = daten.get("ziel_klasse_id")
+    with db.transaktion(con):
+        neu = pakete.kopieren(con, k, _ganzzahl(pid), _ganzzahl(ziel) if ziel is not None else None, daten.get("titel"))
+    h.antwort(200, {"paket": pakete.holen(con, k, neu)})
+
+
 # --- Einstellungen, Sicherung, Update ---
 
 def api_einstellungen(h, con, daten):
@@ -548,6 +683,30 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("POST", r"/api/update", api_update_anfordern),
     ("GET", r"/api/update/sicherung/(vor-update-[0-9_-]+\.zip)", api_update_sicherung),
     ("GET", r"/api/s/([A-Za-z0-9-]{8,9})", api_schueler_ich),
+    ("GET", r"/api/klassen/(\d+)/tage", api_tage),
+    ("POST", r"/api/klassen/(\d+)/regeln", api_regel_anlegen),
+    ("POST", r"/api/klassen/(\d+)/regeln/(\d+)", api_regel_aendern),
+    ("POST", r"/api/klassen/(\d+)/besonders", api_besonders_anlegen),
+    ("POST", r"/api/klassen/(\d+)/besonders/(\d+)/entfernen", api_besonders_entfernen),
+    ("GET", r"/api/ferien", api_ferien),
+    ("POST", r"/api/ferien", api_ferien_anlegen),
+    ("POST", r"/api/ferien/(\d+)/entfernen", api_ferien_entfernen),
+    ("POST", r"/api/schulkalender", api_schulkalender),
+    ("POST", r"/api/schulkalender/entfernen", api_schulkalender_entfernen),
+    ("GET", r"/api/klassen/(\d+)/pakete", api_pakete),
+    ("GET", r"/api/vorlagen", api_vorlagen),
+    ("POST", r"/api/pakete", api_paket_anlegen),
+    ("GET", r"/api/pakete/(\d+)", api_paket),
+    ("POST", r"/api/pakete/(\d+)", _paket_schritt(pakete.aendern)),
+    ("POST", r"/api/pakete/(\d+)/aufgaben", _paket_schritt(pakete.aufgabe_anlegen)),
+    ("POST", r"/api/pakete/(\d+)/aufgaben/(\d+)", _paket_schritt(pakete.aufgabe_aendern)),
+    ("POST", r"/api/pakete/(\d+)/gruppen", _paket_schritt(pakete.gruppe_anlegen)),
+    ("POST", r"/api/pakete/(\d+)/gruppen/(\d+)", _paket_schritt(pakete.gruppe_aendern)),
+    ("POST", r"/api/pakete/(\d+)/kann", _paket_schritt(pakete.kann_anlegen)),
+    ("POST", r"/api/pakete/(\d+)/kann/(\d+)", _paket_schritt(pakete.kann_aendern)),
+    ("POST", r"/api/pakete/(\d+)/nachweise", _paket_schritt(pakete.nachweis_anlegen)),
+    ("POST", r"/api/pakete/(\d+)/nachweise/(\d+)", _paket_schritt(pakete.nachweis_aendern)),
+    ("POST", r"/api/pakete/(\d+)/kopieren", api_paket_kopieren),
 ]]
 
 
@@ -598,6 +757,21 @@ class HTTPServer(ThreadingHTTPServer):
         self.db_pfad = db_pfad
 
 
+def takt(db_pfad):
+    """Jede Minute: faellige Kalender-Abos holen (alle 30 Minuten je Abo)."""
+    while True:
+        con = None
+        try:
+            con = db.verbinden(db_pfad)
+            kalender.faellige_abrufen(con)
+        except Exception as f:
+            print("FEHLER Takt: %r" % f, file=sys.stderr, flush=True)
+        finally:
+            if con is not None:
+                con.close()
+        time.sleep(60)
+
+
 def tls_kontext():
     zert, schluessel = os.path.join(TLS_DIR, "server.crt"), os.path.join(TLS_DIR, "server.key")
     if not (os.path.exists(zert) and os.path.exists(schluessel)):
@@ -625,6 +799,7 @@ def main():
         threading.Thread(target=schueler.serve_forever, daemon=True).start()
         print("Lernbuero MT %s auf https://%s:%d (http :%d fuer die Schuelerseiten)" % (VERSION, BIND, HTTPS_PORT, HTTP_PORT),
               flush=True)
+    threading.Thread(target=takt, args=(db_pfad,), daemon=True).start()
     if code:
         print("Noch kein Konto: Einrichtung unter /einrichtung, Code mit  lernbuero einrichtungscode", flush=True)
     server.serve_forever()

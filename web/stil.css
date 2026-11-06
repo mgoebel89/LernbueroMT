@@ -108,6 +108,12 @@ main.inhalt { padding: 20px max(16px, env(safe-area-inset-right)) 40px 24px; min
 .person { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--linie); background: var(--bg); border-radius: 999px;
   padding: 2px 4px 2px 10px; font-size: .88em; }
 .person button { min-height: 24px; padding: 0 6px; border: none; background: none; color: var(--leise); }
+table.liste tr.gruppe-zeile td { background: var(--blau-hell); color: var(--blau); border-bottom-color: var(--blau-mittel); }
+table.liste tr.gruppe-zeile.zusatz td { background: #fdf1dc; color: #7a4f00; border-bottom-color: var(--gelb); }
+button.leicht.klein { padding: 2px 4px; min-height: 26px; }
+button.leicht.klein .symbol { width: 15px; height: 15px; }
+td a .symbol { width: 14px; height: 14px; vertical-align: -2px; }
+.chip.klein { font-size: .68rem; padding: 0 6px; margin-left: 4px; }
 .qr-bild { width: 222px; height: 222px; display: block; background: #fff; border: 1px solid var(--linie); border-radius: 6px; }
 @media (max-width: 760px) {
   .rahmen { grid-template-columns: 1fr; }
