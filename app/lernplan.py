@@ -45,26 +45,70 @@ def _alle_aufgaben(s):
     return aus
 
 
-def _stand(con, schueler_id):
-    plan, ist, wahl = {}, {}, set()
+def _stand(con, schueler_id, klasse_id=None):
+    """Plan, Ist, Wahl, letzte Meldung je Aufgabe (ohne zurueckgezogene), eigene Fristen ("ueberarbeiten bis") und
+    freigegebene Empfehlungen des Schuelers."""
+    plan, ist = {}, {}
     for z in con.execute("SELECT aufgabe_id, datum FROM plan WHERE schueler_id = ?", (schueler_id,)):
         plan.setdefault(z[0], set()).add(z[1])
     for z in con.execute("SELECT aufgabe_id, datum, ampel FROM ist WHERE schueler_id = ?", (schueler_id,)):
         ist.setdefault(z[0], {})[z[1]] = z[2]
     wahl = {z[0] for z in con.execute("SELECT aufgabe_id FROM wahl WHERE schueler_id = ?", (schueler_id,))}
-    return plan, ist, wahl
+    meld = {}
+    for z in con.execute("SELECT * FROM meldung WHERE schueler_id = ? AND status != 'zurueckgezogen' ORDER BY id", (schueler_id,)):
+        meld[z["aufgabe_id"]] = {"id": z["id"], "status": z["status"], "zeit": z["zeit"], "entschieden": z["entschieden"]}
+    if klasse_id is None:
+        klasse_id = con.execute("SELECT klasse_id FROM schueler WHERE id = ?", (schueler_id,)).fetchone()[0]
+    sfrist = {}
+    for z in con.execute("SELECT aufgabe_id, frist FROM schueler_frist WHERE schueler_id = ?", (schueler_id,)):
+        sfrist[z[0]] = ut.wirksame_frist(con, klasse_id, z[1])[0]
+    emp = {}
+    for z in con.execute("SELECT e.*, l.name AS verfasser FROM empfehlung e JOIN lehrkraft l ON l.id = e.verfasser_id "
+                         "WHERE e.schueler_id = ? AND e.freigegeben IS NOT NULL AND e.entfernt IS NULL ORDER BY e.id", (schueler_id,)):
+        emp.setdefault(z["aufgabe_id"], []).append(empfehlung_kurz(con, klasse_id, z))
+    return {"plan": plan, "ist": ist, "wahl": wahl, "meld": meld, "sfrist": sfrist, "emp": emp}
 
 
-def aufgaben_status(a, plan, ist, heute):
-    """offen | geplant | arbeit; dazu ueber_frist (Frist vorbei ohne fertig) und plant_nach_frist."""
-    tage_plan, tage_ist = plan.get(a["id"], set()), ist.get(a["id"], {})
+def empfehlung_kurz(con, klasse_id, z):
+    return {"id": z["id"], "aufgabe_id": z["aufgabe_id"], "verbindlich": bool(z["verbindlich"]), "frist": z["frist"],
+            "wirksam": ut.wirksame_frist(con, klasse_id, z["frist"])[0] if z["frist"] else None, "hinweis": z["hinweis"],
+            "verfasser": z["verfasser"], "freigegeben": z["freigegeben"], "erledigt": z["erledigt"]}
+
+
+MELDESTATUS = {"offen": "fertig", "angenommen": "angenommen", "ueberarbeiten": "ueberarbeiten"}
+LAUFEND = ("arbeit", "ueberarbeiten")
+
+
+def _ampel_alt(status, letzte_ampel, meldung, heute):
+    """Laufende Aufgabe ohne Ampel seit ueber einer Woche. Bei "ueberarbeiten" zaehlt die Woche ab der Entscheidung."""
+    if status not in LAUFEND:
+        return False
+    bezug = letzte_ampel or ""
+    if status == "ueberarbeiten" and meldung and meldung["entschieden"]:
+        bezug = max(bezug, meldung["entschieden"][:10])
+    return bool(bezug) and bezug < (heute - AMPEL_ALT_TAGE * TAG).isoformat()
+
+
+def aufgaben_status(a, st, heute):
+    """offen | geplant | arbeit | fertig (gemeldet, noch nicht geprueft) | angenommen | ueberarbeiten; dazu die fuer den
+    Schueler wirksame Frist (eigene Frist bei "ueberarbeiten", sonst die der Aufgabe), ueber_frist (Frist vorbei ohne
+    fertig) und plant_nach_frist."""
+    tage_plan, tage_ist = st["plan"].get(a["id"], set()), st["ist"].get(a["id"], {})
     status = "arbeit" if tage_ist else "geplant" if tage_plan else "offen"
-    frist = a.get("wirksam")
+    m = st["meld"].get(a["id"])
+    if m:
+        status = MELDESTATUS[m["status"]]
+    frist = st["sfrist"].get(a["id"]) or a.get("wirksam")
+    if a.get("art") == "zusatz":   # Zusatzaufgaben haben nur die Frist einer verbindlichen Empfehlung
+        frist = next((e["wirksam"] for e in st["emp"].get(a["id"], []) if e["verbindlich"] and not e["erledigt"]), None)
     letzte_ampel = max(tage_ist) if tage_ist else None
-    return {"status": status, "ueber_frist": bool(frist and frist < heute.isoformat()),
-            "plant_nach_frist": bool(frist and tage_plan and max(tage_plan) > frist),
+    erledigt = status in ("fertig", "angenommen")
+    return {"status": status, "frist_schueler": frist, "eigene_frist": a["id"] in st["sfrist"],
+            "ueber_frist": bool(frist and frist < heute.isoformat() and not erledigt),
+            "plant_nach_frist": bool(frist and tage_plan and max(tage_plan) > frist and not erledigt),
             "ampel": tage_ist[letzte_ampel] if letzte_ampel else None, "ampel_datum": letzte_ampel,
-            "ampel_alt": bool(letzte_ampel and letzte_ampel < (heute - AMPEL_ALT_TAGE * TAG).isoformat())}
+            "ampel_alt": _ampel_alt(status, letzte_ampel, m, heute),
+            "meldung": m}
 
 
 def _spalten(con, klasse_id, strukturen, heute):
@@ -86,32 +130,35 @@ def zustand(con, schueler, heute=None):
     heute = _heute(heute)
     sid, kid = schueler["id"], schueler["klasse_id"]
     strukturen = [pakete.struktur(con, p) for p in sichtbare_pakete(con, kid, heute)]
-    plan, ist, wahl = _stand(con, sid)
+    st_alle = _stand(con, sid, kid)
+    plan, ist, wahl = st_alle["plan"], st_alle["ist"], st_alle["wahl"]
     spalten = _spalten(con, kid, strukturen, heute)
     status_tag = {t["datum"]: t for t in spalten}
     kann_wert = {(z["kann_id"], z["art"]): z["stufe"] for z in con.execute(
         "SELECT kann_id, art, stufe FROM kann_einschaetzung WHERE schueler_id = ?", (sid,))}
     aus = []
     hinweise = {"ausfall": [], "ampel_alt": [], "kann_vorher": []}
+    kann_lk = {z["kann_id"]: z["stufe"] for z in con.execute(
+        "SELECT kann_id, stufe FROM kann_einschaetzung WHERE schueler_id = ? AND art = 'lehrkraft'", (sid,))}
     for s in strukturen:
         paket = {"id": s["id"], "titel": s["titel"], "lernfeld": s["lernfeld"], "frist": s["frist"], "zeilen": [],
                  "kann": [], "nachweise": [{"id": n["id"], "titel": n["titel"], "art": n["art"], "frist": n["frist"], "wirksam": n["wirksam"]}
                                          for n in s["nachweise"]]}
 
         def zeile(a, gruppe=None):
-            st = aufgaben_status(a, plan, ist, heute)
+            st = aufgaben_status(a, st_alle, heute)
             gewaehlt = a["art"] != "wahl" or a["id"] in wahl
             for d in sorted(plan.get(a["id"], ())):
                 t = status_tag.get(d)
                 if gewaehlt and d >= heute.isoformat() and t and t["status"] in ("ausfall", "ferien"):
                     hinweise["ausfall"].append({"aufgabe_id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"], "datum": d,
                                                 "grund": t["grund"], "status": t["status"]})
-            if gewaehlt and st["status"] == "arbeit" and (st["ampel_alt"] or not st["ampel"]):
+            if gewaehlt and st["ampel_alt"]:
                 hinweise["ampel_alt"].append({"aufgabe_id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"]})
             return {"typ": "aufgabe", "id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"], "art": a["art"],
-                    "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": a["wirksam"], "gewaehlt": gewaehlt,
+                    "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": st["frist_schueler"], "gewaehlt": gewaehlt,
                     "wahlgruppe_id": a["wahlgruppe_id"], "plan": sorted(plan.get(a["id"], ())), "ist": ist.get(a["id"], {}),
-                    "kann": a["kann"], **st}
+                    "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"), **st}
 
         for e in s["ablauf"]:
             if e["typ"] == "aufgabe":
@@ -122,9 +169,14 @@ def zustand(con, schueler, heute=None):
                                         "waehlen": e["waehlen"], "anzahl": len(e["aufgaben"]), "gewaehlt": gewaehlte,
                                         "frist": e["frist"], "wirksam": e["wirksam"]})
                 paket["zeilen"] += [zeile(a, e) for a in e["aufgaben"]]
+        empfohlen = [a for a in s["zusatz"] if a["id"] in st_alle["emp"]]
+        if empfohlen:   # Zusatzaufgaben nur, wenn sie empfohlen sind: eigene Zeilen "Empfohlen fuer dich"
+            paket["zeilen"].append({"typ": "empfohlen", "anzahl": len(empfohlen)})
+            paket["zeilen"] += [zeile(a) for a in empfohlen]
         for k in s["kann"]:
             paket["kann"].append({"id": k["id"], "kuerzel": k["kuerzel"], "text": k["text"], "aufgaben_kuerzel": k["aufgaben_kuerzel"],
-                                  "vorher": kann_wert.get((k["id"], "vorher")), "nachher": kann_wert.get((k["id"], "nachher"))})
+                                  "aufgaben": k["aufgaben"], "vorher": kann_wert.get((k["id"], "vorher")),
+                                  "nachher": kann_wert.get((k["id"], "nachher")), "lehrkraft": kann_lk.get(k["id"])})
         if paket["kann"] and any(k["vorher"] is None for k in paket["kann"]):
             hinweise["kann_vorher"].append({"paket_id": s["id"], "titel": s["titel"]})
         aus.append(paket)
@@ -141,7 +193,9 @@ def _aufgabe_sichtbar(con, schueler, aufgabe_id, heute):
                     "WHERE a.id = ? AND a.aktiv = 1", (aufgabe_id,)).fetchone()
     if a is None or a["klasse_id"] != schueler["klasse_id"] or a["archiviert"] or not a["freigabe"] or a["freigabe"] > heute.isoformat():
         raise PlanFehler("Diese Aufgabe gibt es in deinem Plan nicht.")
-    if a["art"] == "zusatz":
+    if a["art"] == "zusatz" and not con.execute(
+            "SELECT 1 FROM empfehlung WHERE schueler_id = ? AND aufgabe_id = ? AND freigegeben IS NOT NULL AND entfernt IS NULL",
+            (schueler["id"], aufgabe_id)).fetchone():
         raise PlanFehler("Zusatzaufgaben gibt es erst, wenn sie dir empfohlen werden.")
     return a
 
@@ -233,6 +287,9 @@ def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None):
     else:
         if aufgabe_id not in andere:
             return
+        if con.execute("SELECT 1 FROM meldung WHERE schueler_id = ? AND aufgabe_id = ? AND status IN ('offen', 'angenommen')",
+                       (schueler["id"], aufgabe_id)).fetchone():
+            raise PlanFehler("%s ist schon fertig gemeldet. Abwählen geht nur bis zum Fertigmelden." % a["kuerzel"])
         kuenftig = [z[0] for z in con.execute("SELECT datum FROM plan WHERE schueler_id = ? AND aufgabe_id = ? AND datum >= ?",
                                               (schueler["id"], aufgabe_id, heute.isoformat()))]
         con.execute("DELETE FROM plan WHERE schueler_id = ? AND aufgabe_id = ? AND datum >= ?", (schueler["id"], aufgabe_id, heute.isoformat()))
@@ -306,33 +363,38 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
                             "waehlen": e["waehlen"], "anzahl": len(e["aufgaben"]), "aufgaben": e["aufgaben"]})
     zeilen = []
     for sch in con.execute("SELECT * FROM schueler WHERE klasse_id = ? AND aktiv = 1 ORDER BY nachname, vorname", (klasse_id,)).fetchall():
-        plan, ist, wahl = _stand(con, sch["id"])
+        st_alle = _stand(con, sch["id"], klasse_id)
+        wahl = st_alle["wahl"]
         zellen, hinweise, ampeln = [], [], []
         for sp in spalten:
             if sp["typ"] == "aufgabe":
                 a = next(x for x in _alle_aufgaben(s) if x["id"] == sp["id"])
-                st = aufgaben_status(a, plan, ist, heute)
-                zellen.append({"status": st["status"], "ueber_frist": st["ueber_frist"], "text": a["kuerzel"], "gruppe": False})
+                st = aufgaben_status(a, st_alle, heute)
+                zellen.append({"status": st["status"], "ueber_frist": st["ueber_frist"], "text": a["kuerzel"], "gruppe": False,
+                               "aufgabe_id": a["id"], "meldung_id": st["meldung"]["id"] if st["meldung"] else None})
                 if st["plant_nach_frist"]:
                     hinweise.append("plant %s nach der Frist" % a["kuerzel"])
             else:
                 gewaehlt = [a for a in sp["aufgaben"] if a["id"] in wahl]
                 if not gewaehlt:
-                    zellen.append({"status": "fehlt", "ueber_frist": False, "text": "?", "gruppe": True})
+                    zellen.append({"status": "fehlt", "ueber_frist": False, "text": "?", "gruppe": True, "aufgabe_id": None, "meldung_id": None})
                     hinweise.append("Wahlgruppe %s noch nicht gewählt" % sp["kuerzel"])
                     continue
                 a = gewaehlt[0]
-                st = aufgaben_status(a, plan, ist, heute)
-                zellen.append({"status": st["status"], "ueber_frist": st["ueber_frist"], "text": ", ".join(x["kuerzel"] for x in gewaehlt), "gruppe": True})
+                st = aufgaben_status(a, st_alle, heute)
+                zellen.append({"status": st["status"], "ueber_frist": st["ueber_frist"], "text": ", ".join(x["kuerzel"] for x in gewaehlt), "gruppe": True,
+                               "aufgabe_id": a["id"], "meldung_id": st["meldung"]["id"] if st["meldung"] else None})
                 if st["plant_nach_frist"]:
                     hinweise.append("plant %s nach der Frist" % a["kuerzel"])
-            if st["status"] == "arbeit":
+            if st["status"] in LAUFEND:
                 if st["ampel_alt"]:
                     hinweise.append("Ampel %s älter als 1 Woche" % a["kuerzel"])
                 else:
                     ampeln.append(st["ampel"])
         schlechteste = next((x for x in ("r", "y", "g") if x in ampeln), None)
+        offen_emp = sum(1 for liste in st_alle["emp"].values() for e in liste if not e["erledigt"])
         zeilen.append({"id": sch["id"], "name": "%s %s" % (sch["vorname"], sch["nachname"]), "zellen": zellen, "ampel": schlechteste,
+                       "empfehlungen": offen_emp,
                        "hinweis": hinweise[0] if hinweise else ("noch nichts geplant" if all(z["status"] in ("offen", "fehlt") for z in zellen) else "")})
     return {"pakete": [{"id": x["id"], "titel": x["titel"], "freigabe": x["freigabe"]} for x in alle],
             "paket": {"id": p["id"], "titel": p["titel"], "freigabe": p["freigabe"]}, "spalten": [

@@ -1,6 +1,8 @@
 // Schülerseite (/s/<Code>): Leiste mit den fünf Bereichen (feste Farbe und Symbol, am PC links, am Handy unten).
-// Stufe C: Mein Plan (Raster), Heute mit „Tag abschließen“, Kann-Liste vorher. Jede Entscheidung läuft über ein Overlay.
-// Rückmeldungen (Stufe D) und Gelingensnachweise (Stufe E) folgen.
+// Stufe C: Mein Plan (Raster), Heute mit „Tag abschließen“, Kann-Liste vorher.
+// Stufe D: Aufgabe öffnen und fertig melden (mit Kann-Aussagen „nachher“), Hilfe-Knopf live mit Platz in der Reihe,
+// Feedbacktermin buchen und absagen, Rückmeldungen und Empfehlungen. Jede Entscheidung läuft über ein Overlay,
+// nur der Hilfe-Knopf wirkt mit einem Tipp. Gelingensnachweise (Stufe E) folgen.
 'use strict';
 const { el } = L;
 const CODE = location.pathname.split('/')[2].toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -9,29 +11,61 @@ const BEREICHE = [
   { s: 'plan', lang: 'Mein Plan', kurz: 'Plan' },
   { s: 'heute', lang: 'Heute', kurz: 'Heute' },
   { s: 'kann', lang: 'Kann-Liste', kurz: 'Kann ich' },
-  { s: 'rueck', lang: 'Rückmeldungen', kurz: 'Rückmeld.', text: 'Rückmeldungen und Empfehlungen deiner Lehrkräfte nach dem Gespräch.', stufe: 'D' },
+  { s: 'rueck', lang: 'Rückmeldungen', kurz: 'Rückmeld.' },
   { s: 'gn', lang: 'Gelingensnachweise', kurz: 'Nachweise', text: 'Bereit melden, Termin buchen, Ergebnis ansehen.', stufe: 'E' },
 ];
-const STUFEN = [['😟', 'muss viel üben'], ['😐', 'brauche Hilfe'], ['🙂', 'meist allein'], ['😀', 'kann es perfekt']];
 const AMPELN = [['g', 'im Plan'], ['y', 'Probleme, schaffe ich wohl'], ['r', 'ohne Hilfe nicht weiter']];
 let ich = null, z = null, gefragt = false;
 
 const api = (pfad, daten) => L.api(daten === undefined ? 'GET' : 'POST', '/api/s/' + CODE + pfad, daten);
+const zahlen = () => ich.einschaetzer === 'zahl';
 
 function merken() {
   try { localStorage.setItem('lernbuero-code', CODE); } catch (e) { /* privat: dann eben nicht */ }
 }
 
-function hilfe() {
-  L.dialog({ titel: 'Ich brauche Hilfe', knopf: 'OK', abbrechen: null,
-    inhalt: el('p', { text: 'Der Hilfe-Knopf wird mit Stufe D freigeschaltet. Bis dahin melde dich bitte wie gewohnt.' }) });
+// --- Hilfe-Knopf: ein Tipp genügt, kein Overlay ---
+
+async function hilfeRufen() {
+  if (!z.hilfe.erlaubt) { L.meldung('Der Hilfe-Knopf geht nur im Lernbüro mit Lehrkraft (' + z.hilfe.grund + ').', true); return; }
+  if (z.hilfe.offen) { L.meldung('Du bist Nr. ' + z.hilfe.platz + ' in der Reihe.'); return; }
+  try { z = await api('/hilfe', { aktion: 'rufen' }); hilfeAnzeigen(); leisteZahlen(); }
+  catch (e) { L.meldung(e.message, true); }
 }
+
+async function hilfeZurueck() {
+  try { z = await api('/hilfe', { aktion: 'zurueck' }); hilfeAnzeigen(); }
+  catch (e) { L.meldung(e.message, true); }
+}
+
+function hilfeBlock(gross) {
+  const h = z ? z.hilfe : { erlaubt: true, offen: false };
+  const knopf = el('button', { type: 'button', class: (gross ? 'hilfe-gross' : 'hilfe-knopf schiene-hilfe') + (h.offen ? ' an' : '') + (h.erlaubt ? '' : ' gesperrt'),
+    onclick: hilfeRufen, 'aria-live': 'polite' }, L.symbol('hilfe'),
+  h.offen ? (gross ? 'Du bist Nr. ' + h.platz + ' in der Reihe' : 'Du bist Nr. ' + h.platz) : !h.erlaubt && gross ? 'Hilfe: ' + h.grund : 'Ich brauche Hilfe');
+  if (!h.offen) return el('div', { class: 'hilfe-ort' + (gross ? ' gross' : ''), 'data-hilfe': gross ? 'gross' : 'schiene' }, knopf);
+  return el('div', { class: 'hilfe-ort' + (gross ? ' gross' : ''), 'data-hilfe': gross ? 'gross' : 'schiene' }, knopf,
+    el('button', { type: 'button', class: 'leicht klein hilfe-zurueck', onclick: hilfeZurueck, text: 'zurückziehen' }));
+}
+
+function hilfeAnzeigen() {
+  document.querySelectorAll('[data-hilfe]').forEach(e => e.replaceWith(hilfeBlock(e.dataset.hilfe === 'gross')));
+}
+
+// --- Leiste ---
 
 function leiste() {
   L.setzen(document.getElementById('schiene'), BEREICHE.map(b => el('a', { href: '#' + b.s, 'data-bereich': b.s, title: b.lang },
     el('b', { class: 'ik ' + b.s }, L.symbol(b.s)), el('span', { class: 'lang', text: b.lang === 'Gelingensnachweise' ? 'Nachweise' : b.lang }),
-    el('span', { class: 'kurz', text: b.kurz }))),
-    el('button', { type: 'button', class: 'hilfe-knopf schiene-hilfe', onclick: hilfe }, L.symbol('hilfe'), 'Ich brauche Hilfe'));
+    el('span', { class: 'kurz', text: b.kurz }))), hilfeBlock(false));
+}
+
+function leisteZahlen() {
+  const ik = document.querySelector('#schiene a[data-bereich=rueck] .ik');
+  if (!ik) return;
+  const alt = ik.querySelector('.zahl');
+  if (alt) alt.remove();
+  if (z && z.ungelesen) ik.appendChild(el('span', { class: 'zahl', text: String(z.ungelesen) }));
 }
 
 async function laden() {
@@ -46,8 +80,14 @@ async function schritt(pfad, daten) {
 }
 
 function alleZeilen() {
-  return [].concat(...z.pakete.map(p => p.zeilen.filter(r => r.typ === 'aufgabe').map(r => Object.assign({ paket: p.titel }, r))));
+  return [].concat(...z.pakete.map(p => p.zeilen.filter(r => r.typ === 'aufgabe').map(r => Object.assign({ paket: p.titel, paket_id: p.id }, r))));
 }
+
+function paketVon(r) {
+  return z.pakete.find(p => p.zeilen.some(x => x.typ === 'aufgabe' && x.id === r.id));
+}
+
+const meldbar = r => r.gewaehlt && !['fertig', 'angenommen'].includes(r.status);
 
 // --- Bereiche ---
 
@@ -62,14 +102,17 @@ function zeigen() {
   if (b.s === 'plan') planZeigen();
   else if (b.s === 'heute') heuteZeigen();
   else if (b.s === 'kann') kannZeigen();
+  else if (b.s === 'rueck') rueckZeigen();
   else L.setzen(inhalt, el('h1', { class: 'dreieck', text: b.lang }),
     el('div', { class: 'karte platzhalter' }, el('b', { class: 'ik ' + b.s }, L.symbol(b.s)), el('p', { text: b.text }),
       el('p', { class: 'leise', text: 'Dieser Bereich kommt mit Stufe ' + b.stufe + '.' })));
+  hilfeAnzeigen();
+  leisteZahlen();
   if (!gefragt) { gefragt = true; nachfragen(); }
 }
 
 function naechsteFrist() {
-  const offen = alleZeilen().filter(r => r.gewaehlt && r.wirksam && r.wirksam >= z.heute).sort((a, b) => a.wirksam.localeCompare(b.wirksam));
+  const offen = alleZeilen().filter(r => r.gewaehlt && r.wirksam && r.wirksam >= z.heute && meldbar(r)).sort((a, b) => a.wirksam.localeCompare(b.wirksam));
   return offen[0];
 }
 
@@ -78,8 +121,9 @@ function planZeigen() {
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Mein Plan' }),
     n ? el('div', { class: 'banner' }, 'Nächste Frist: ', el('b', { text: n.kuerzel + ' ' + n.titel }), ' am ' + L.tag(n.wirksam) + '.') : null,
-    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, planen, waehlen: wahlFragen })
+    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, planen, waehlen: wahlFragen, oeffnen: aufgabeOeffnen })
       : el('div', { class: 'leer', text: 'Noch ist kein Lernpaket für dich freigegeben.' }),
+    z.pakete.length ? el('p', { class: 'leise klein', text: 'Kürzel antippen: Aufgabe öffnen, fertig melden. Name antippen: Aufgabe in Moodle.' }) : null,
     el('p', { class: 'leise klein' }, 'Nicht du? ', el('a', { href: '/?neu', text: 'Anderen Code eingeben' })));
 }
 
@@ -92,28 +136,46 @@ function heuteZeigen() {
   const t = z.heute_tag;
   const heute = alleZeilen().filter(r => r.gewaehlt && r.plan.includes(z.heute));
   const unterricht = t && (t.status === 'unterricht' || t.status === 'ohne');
-  const fristen = alleZeilen().filter(r => r.gewaehlt && r.wirksam && r.wirksam >= z.heute).sort((a, b) => a.wirksam.localeCompare(b.wirksam)).slice(0, 4);
+  const fristen = alleZeilen().filter(r => r.gewaehlt && r.wirksam && r.wirksam >= z.heute && meldbar(r))
+    .sort((a, b) => a.wirksam.localeCompare(b.wirksam)).slice(0, 4);
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Heute · ' + L.tag(z.heute) }),
     !t ? el('div', { class: 'banner', text: 'Heute ist kein Lernbüro.' })
-      : t.status === 'ohne' ? el('div', { class: 'banner', text: 'Heute ohne Lehrkraft (' + t.grund + '). Arbeite nach deinem Plan.' })
+      : t.status === 'ohne' ? el('div', { class: 'banner', text: 'Heute ohne Lehrkraft (' + t.grund + '). Arbeite nach deinem Plan. Hilfe-Knopf und Termine sind heute gesperrt.' })
         : !unterricht ? el('div', { class: 'banner warnung', text: (t.status === 'ferien' ? 'Ferien: ' : 'Fällt aus: ') + t.grund }) : null,
-    unterricht && t.status !== 'ohne' ? el('button', { type: 'button', class: 'hilfe-gross', onclick: hilfe }, L.symbol('hilfe'), 'Ich brauche Hilfe') : null,
+    z.ungelesen ? el('a', { class: 'karte neu-rueck', href: '#rueck' }, el('b', { class: 'ik rueck' }, L.symbol('rueck')),
+      el('div', {}, el('b', { text: z.ungelesen === 1 ? 'Neue Rückmeldung' : z.ungelesen + ' neue Rückmeldungen' }), el('div', { class: 'leise klein', text: 'antippen zum Lesen' }))) : null,
+    unterricht && t.status !== 'ohne' ? hilfeBlock(true) : null,
     el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Für heute geplant' }),
-      heute.length ? heute.map(r => el('div', { class: 'zeile' }, el('b', { class: 'mono', style: 'color:var(--blau)', text: r.kuerzel }),
-        r.moodle_link ? el('a', { class: 'alink', href: r.moodle_link, target: '_blank', rel: 'noopener', text: r.titel }) : r.titel,
-        el('span', { class: 'rechts' }, r.ampel ? el('span', { class: 'ampel a-' + r.ampel }) : null)))
+      heute.length ? heute.map(r => el('div', { class: 'heute-zeile' },
+        el('button', { type: 'button', class: 'kz', text: r.kuerzel, onclick: () => aufgabeOeffnen(r) }),
+        el('div', { class: 'h-titel' }, r.moodle_link ? el('a', { class: 'alink', href: r.moodle_link, target: '_blank', rel: 'noopener', text: r.titel }) : r.titel,
+          el('div', {}, Raster.statusChip(r), r.ampel ? el('span', { class: 'ampel a-' + r.ampel, style: 'margin-left:6px' }) : null)),
+        meldbar(r) ? el('button', { type: 'button', class: 'haupt klein', onclick: () => fertigMelden(r) }, L.symbol('haken'), 'Fertig melden') : null))
         : el('p', { class: 'leise', text: unterricht ? 'Für heute hast du nichts geplant. Plane in „Mein Plan“.' : 'Nichts geplant.' })),
     unterricht ? el('button', { type: 'button', class: z.abgeschlossen ? 'knopf' : 'haupt', style: 'width:100%;padding:12px', onclick: abschliessen },
       L.symbol('kann'), z.abgeschlossen ? 'Tag abgeschlossen um ' + z.abgeschlossen.slice(11, 16) + ' · ändern' : 'Tag abschließen') : null,
     z.hinweise.ampel_alt.length ? el('div', { class: 'banner warnung', text: 'Ampel fehlt seit über einer Woche: ' +
       z.hinweise.ampel_alt.map(h => h.kuerzel).join(', ') + '. Bitte beim Tagesabschluss einschätzen.' }) : null,
+    termineKarte(),
     fristen.length ? el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Demnächst fällig' }),
       el('div', { class: 'liste-klein' }, fristen.map(r => el('div', {}, el('span', { class: 'dat', text: L.tag(r.wirksam) }), r.kuerzel + ' ' + r.titel)))) : null);
 }
 
+function termineKarte() {
+  const offen = z.termine.filter(t => !t.abgesagt && t.art === 'feedback');
+  return el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Feedback' }),
+    z.termine.length ? el('div', { class: 'stapel', style: 'gap:6px' }, z.termine.map(t => el('div', { class: 'termin-zeile' + (t.abgesagt ? ' abgesagt' : '') },
+      el('div', {}, el('b', { text: L.tag(t.datum) + ' · ' + t.beginn }), ' · ' + t.anlass,
+        el('div', { class: 'leise klein', text: t.abgesagt ? 'abgesagt von der Lehrkraft, bitte neu buchen' : 'bei ' + t.lehrkraft +
+          (t.darf_absagen ? ' · absagen bis ' + L.tag(t.absagen_bis) : ' · absagen nur noch bei der Lehrkraft') })),
+      t.darf_absagen ? el('button', { type: 'button', class: 'klein', onclick: () => absagen(t), text: 'absagen' }) : null)))
+      : el('p', { class: 'leise klein', text: 'Kein Termin gebucht.' }),
+    offen.length ? null : el('button', { type: 'button', style: 'justify-self:start', onclick: terminBuchen }, L.symbol('uhr'), 'Feedbacktermin buchen'));
+}
+
 async function abschliessen() {
-  const alle = alleZeilen().filter(r => r.gewaehlt);
+  const alle = alleZeilen().filter(r => r.gewaehlt && r.status !== 'angenommen');
   const wahl = {};
   const geplant = alle.filter(r => r.plan.includes(z.heute) || r.ist[z.heute]);
   const andere = alle.filter(r => !geplant.includes(r));
@@ -143,24 +205,178 @@ async function abschliessen() {
   });
 }
 
-function skala(k, aktiv, wert, aendern) {
-  const zahlen = ich.einschaetzer === 'zahl';
-  return el('div', { class: 'skala' }, STUFEN.map(([smiley, text], i) => el('button', { type: 'button', class: wert === i + 1 ? 'an' : null, disabled: !aktiv,
-    onclick: () => aendern(i + 1) }, el('b', { text: zahlen ? String(i + 1) : smiley }), text)));
+// --- Aufgabe öffnen, fertig melden ---
+
+async function aufgabeOeffnen(r, g) {
+  const p = paketVon(r);
+  const gruppe = g || (p && r.wahlgruppe_id ? p.zeilen.find(x => x.typ === 'gruppe' && x.id === r.wahlgruppe_id) : null);
+  const tage = l => l.length ? l.map(d => L.tag(d)).join(', ') : '–';
+  const ist = Object.keys(r.ist).sort();
+  const emp = (r.empfehlungen || []);
+  let folge = null;
+  const weitere = [];
+  if (r.status === 'fertig' && r.meldung) weitere.push({ text: 'Meldung zurückziehen', speichern: () => (folge = 'zurueck') });
+  if (r.art === 'wahl' && !['fertig', 'angenommen'].includes(r.status)) weitere.push({ text: r.gewaehlt ? 'abwählen' : 'wählen', speichern: () => (folge = 'wahl') });
+  const ok = await L.dialog({
+    titel: r.kuerzel + ' ' + r.titel,
+    knopf: meldbar(r) ? 'Fertig melden' : null, abbrechen: 'Schließen', weitere,
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('div', { class: 'zeile' }, r.gewaehlt ? Raster.statusChip(r) : el('span', { class: 'chip', text: 'nicht gewählt' }),
+        el('span', { class: 'leise klein', text: [p ? p.titel : '', r.art === 'pflicht' ? 'Pflicht' : r.art === 'wahl' ? 'Wahl' + (gruppe ? ' ' + gruppe.buchstabe : '') : 'Zusatzaufgabe'].filter(Boolean).join(' · ') })),
+      el('div', { class: 'daten-liste' },
+        el('div', {}, el('span', { text: 'Frist' }), el('b', { text: r.wirksam ? L.tag(r.wirksam) + (r.eigene_frist ? ' (deine neue Frist)' : '') : 'keine' })),
+        el('div', {}, el('span', { text: 'Geplant' }), el('b', { text: tage(r.plan) })),
+        el('div', {}, el('span', { text: 'Bearbeitet' }), el('b', {}, ist.length ? ist.map(d => el('span', { class: 'ist-tag' }, el('i', { class: 'ampel a-' + r.ist[d] }), L.tag(d))) : '–')),
+        r.meldung ? el('div', {}, el('span', { text: 'Fertig gemeldet' }), el('b', { text: L.wann(r.meldung.zeit) })) : null),
+      emp.length ? el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Empfohlen' }),
+        emp.map(e => el('div', { class: 'emp-zeile' + (e.erledigt ? ' erledigt' : '') },
+          el('div', {}, el('b', { text: e.verbindlich ? 'verbindlich' + (e.wirksam ? ' bis ' + L.tag(e.wirksam) : '') : 'freiwillig' }),
+            e.hinweis ? ' · ' + e.hinweis : '', el('div', { class: 'leise klein', text: 'von ' + e.verfasser })),
+          el('button', { type: 'button', class: 'klein', onclick: async ev => {
+            try { z = await api('/empfehlung', { empfehlung_id: e.id, erledigt: !e.erledigt }); ev.currentTarget.closest('dialog').dispatchEvent(new Event('cancel')); zeigen(); }
+            catch (f) { L.meldung(f.message, true); }
+          } }, e.erledigt ? 'wieder offen' : 'erledigt')))) : null,
+      r.moodle_link ? el('a', { class: 'knopf', style: 'justify-self:start', href: r.moodle_link, target: '_blank', rel: 'noopener' }, L.symbol('extern'), 'Aufgabe in Moodle öffnen') : null,
+      r.status === 'angenommen' ? el('p', { class: 'leise klein', text: 'Diese Aufgabe ist angenommen.' }) : null),
+    speichern: () => (folge = folge || 'fertig'),
+  });
+  if (!ok) return;
+  if (folge === 'fertig') fertigMelden(r);
+  else if (folge === 'wahl') wahlFragen(r, gruppe);
+  else if (folge === 'zurueck') {
+    const ja = await L.dialog({ titel: 'Meldung zurückziehen?', knopf: 'Zurückziehen',
+      inhalt: el('p', { text: r.kuerzel + ' steht dann wieder „in Arbeit“. Melde dich wieder fertig, wenn du so weit bist.' }),
+      speichern: () => schritt('/fertig/zurueck', { meldung_id: r.meldung.id }) });
+    if (ja) L.meldung('Zurückgezogen.');
+  }
 }
+
+async function fertigMelden(r) {
+  const p = paketVon(r);
+  const kann = p ? p.kann.filter(k => (r.kann || []).includes(k.id)) : [];
+  const werte = {};
+  kann.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
+  const hochgeladen = el('input', { type: 'checkbox', required: !!r.moodle_link });
+  const ok = await L.dialog({
+    titel: r.kuerzel + ' ' + r.titel + ' fertig melden', knopf: 'Fertig melden',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      r.moodle_link ? el('label', { class: 'haken' }, hochgeladen, 'Meine Abgabe ist in Moodle hochgeladen') : null,
+      kann.length ? el('div', { class: 'stapel', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Wie sicher bist du jetzt?' }),
+        zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
+        kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+          k.vorher ? el('div', { class: 'leise klein', text: 'Vorher: ' + L.stufeText(k.vorher, zahlen()) }) : null,
+          L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen()))))
+        : el('p', { class: 'leise', text: 'Deine Lehrkraft sieht die Meldung sofort und bespricht die Aufgabe mit dir.' })),
+    speichern: () => {
+      if (kann.some(k => !werte[k.id])) throw new Error('Bitte schätze jede Kann-Aussage ein.');
+      return schritt('/fertig', { aufgabe_id: r.id, kann: werte });
+    },
+  });
+  if (ok) L.meldung(r.kuerzel + ' ist fertig gemeldet. Deine Lehrkraft meldet sich.');
+}
+
+// --- Feedbacktermine ---
+
+async function terminBuchen() {
+  let plaetze;
+  try { plaetze = (await api('/plaetze?art=feedback')).plaetze; }
+  catch (e) { L.meldung(e.message, true); return; }
+  if (!plaetze.length) {
+    await L.dialog({ titel: 'Feedbacktermin', knopf: 'OK', abbrechen: null,
+      inhalt: el('p', { text: 'Gerade gibt es keine freien Sprechzeiten. Schau später noch einmal oder sprich deine Lehrkraft an.' }) });
+    return;
+  }
+  const anlass = el('select', { required: true }, el('option', { value: '', text: 'Worum geht es?' }),
+    z.pakete.map(p => el('optgroup', { label: p.titel },
+      p.zeilen.filter(r => r.typ === 'aufgabe' && r.gewaehlt).map(r => el('option', { value: 'a' + r.id, text: r.kuerzel + ' ' + r.titel })),
+      el('option', { value: 'p' + p.id, text: 'das ganze Paket' }))),
+    el('option', { value: 't', text: 'etwas anderes …' }));
+  const text = el('input', { maxlength: 200, placeholder: 'kurz, worum es geht' });
+  const textFeld = L.feld('Anlass', text);
+  textFeld.hidden = true;
+  anlass.addEventListener('change', () => { textFeld.hidden = anlass.value !== 't'; });
+  let wahl = null;
+  const ok = el('span');
+  const tage = el('div', { class: 'stapel', style: 'gap:10px' }, plaetze.map(t => el('div', { class: 'stapel', style: 'gap:4px' },
+    el('div', { class: 'etikett', text: L.tag(t.datum) + ' · bei ' + t.lehrkraft + ' · ' + t.dauer + ' min' }),
+    el('div', { class: 'slots' }, t.plaetze.map(b => el('button', { type: 'button', text: b, onclick: ev => {
+      wahl = { zeitfenster_id: t.zeitfenster_id, datum: t.datum, beginn: b };
+      tage.querySelectorAll('.slots button').forEach(x => x.classList.toggle('an', x === ev.currentTarget));
+      ok.textContent = L.tag(t.datum) + ' · ' + b;
+    } }))))));
+  const erfolg = await L.dialog({
+    titel: 'Feedbacktermin buchen', knopf: 'Buchen',
+    inhalt: el('div', { class: 'stapel', style: 'gap:12px' }, L.feld('Anlass', anlass), textFeld,
+      el('p', { class: 'leise klein', text: 'Nur freie Zeiten in der Sprechzeit. Ein offener Termin zur Zeit, absagen kannst du bis zum Vortag.' }),
+      tage, el('div', { class: 'zeile' }, el('span', { class: 'leise klein', text: 'gewählt: ' }), ok)),
+    speichern: () => {
+      if (!wahl) throw new Error('Bitte eine Uhrzeit wählen.');
+      const v = anlass.value;
+      const a = v.startsWith('a') ? { aufgabe_id: Number(v.slice(1)) } : v.startsWith('p') ? { paket_id: Number(v.slice(1)) } : { text: text.value };
+      return schritt('/termin', Object.assign({ art: 'feedback', anlass: a }, wahl));
+    },
+  });
+  if (erfolg) L.meldung('Termin gebucht: ' + ok.textContent);
+}
+
+async function absagen(t) {
+  await L.dialog({ titel: 'Termin absagen?', knopf: 'Absagen', gefaehrlich: true,
+    inhalt: el('p', { text: L.tag(t.datum) + ' · ' + t.beginn + ' · ' + t.anlass + '. Der Platz wird für andere frei.' }),
+    speichern: () => schritt('/termin/absagen', { termin_id: t.id }) });
+}
+
+// --- Rückmeldungen ---
+
+async function rueckZeigen() {
+  L.setzen(inhalt, el('h1', { class: 'dreieck', text: 'Rückmeldungen' }), el('p', { class: 'leise', text: 'Lade …' }));
+  let d;
+  try { d = await api('/rueckmeldungen'); } catch (e) { L.setzen(inhalt, el('div', { class: 'leer', text: e.message })); return; }
+  const empZeile = e => el('div', { class: 'emp-zeile' + (e.erledigt ? ' erledigt' : '') },
+    el('div', {}, el('span', { class: 'chip ' + (e.verbindlich ? 'lila' : 'lila-hell') + ' klein' }, L.symbol('stern'),
+      e.verbindlich ? 'verbindlich' + (e.wirksam ? ' bis ' + L.tag(e.wirksam) : '') : 'freiwillig'), ' ',
+    e.aufgabe ? (e.aufgabe.moodle_link ? el('a', { class: 'alink', href: e.aufgabe.moodle_link, target: '_blank', rel: 'noopener', text: e.aufgabe.kuerzel + ' ' + e.aufgabe.titel })
+      : e.aufgabe.kuerzel + ' ' + e.aufgabe.titel) : '',
+    e.hinweis ? el('div', { class: 'leise klein', text: e.hinweis }) : null,
+    el('div', { class: 'leise klein', text: e.erledigt ? 'erledigt' : e.aufgabe && e.aufgabe.art === 'zusatz' ? 'steht in deinem Plan unter „Empfohlen für dich“' : 'plane sie in deinem Plan ein' })),
+  el('button', { type: 'button', class: 'klein', onclick: async () => {
+    try { z = await api('/empfehlung', { empfehlung_id: e.id, erledigt: !e.erledigt }); rueckZeigen(); } catch (f) { L.meldung(f.message, true); }
+  } }, e.erledigt ? 'wieder offen' : 'erledigt'));
+  L.setzen(inhalt,
+    el('h1', { class: 'dreieck', text: 'Rückmeldungen' }),
+    !d.rueckmeldungen.length && !d.empfehlungen.length ? el('div', { class: 'leer', text: 'Noch keine Rückmeldung. Melde eine Aufgabe fertig oder buche einen Feedbacktermin.' }) : null,
+    d.empfehlungen.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Empfohlen für dich' }), d.empfehlungen.map(empZeile)) : null,
+    d.rueckmeldungen.map(r => el('div', { class: 'karte stapel rm' + (r.gelesen ? '' : ' neu') },
+      el('div', { class: 'zeile' }, el('b', { class: 'ik rueck klein-ik' }, L.symbol('rueck')),
+        el('div', {}, el('b', { text: r.aufgabe ? r.aufgabe.kuerzel + ' ' + r.aufgabe.titel : r.paket ? 'Paket ' + r.paket : 'Feedback' }),
+          el('div', { class: 'leise klein', text: r.verfasser + ' · ' + L.wann(r.freigegeben) })),
+        el('span', { class: 'rechts' }, r.gelesen ? null : el('span', { class: 'chip rot', text: 'neu' }),
+          r.entscheidung === 'angenommen' ? el('span', { class: 'sc angenommen', text: 'angenommen' })
+            : r.entscheidung === 'ueberarbeiten' ? el('span', { class: 'sc ueberarbeiten', text: 'überarbeiten bis ' + L.tag(r.neue_frist) }) : null)),
+      r.text ? el('p', { class: 'rm-text', text: r.text }) : null,
+      r.kann.length ? el('div', { class: 'stapel', style: 'gap:4px' }, el('div', { class: 'etikett', text: 'Einschätzung deiner Lehrkraft' }),
+        r.kann.map(k => el('div', { class: 'kann-vergleich' }, el('span', { text: 'Ich kann ' + k.text }), el('b', { text: L.stufeText(k.stufe, zahlen()) })))) : null,
+      r.empfehlungen.length ? el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Empfehlungen' }), r.empfehlungen.map(empZeile)) : null)));
+  if (d.ungelesen) {
+    try { z = await api('/rueckmeldungen/gelesen', {}); leisteZahlen(); } catch (e) { /* beim nächsten Mal */ }
+  }
+}
+
+// --- Kann-Liste ---
 
 function kannZeigen() {
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Kann-Liste' }),
-    ich.einschaetzer === 'zahl' ? el('div', { class: 'banner', text: '1 = Ich muss noch viel üben · 2 = Ich brauche noch Hilfe · 3 = Ich kann es meistens allein · 4 = Ich kann es perfekt' }) : null,
+    zahlen() ? el('div', { class: 'banner', text: '1 = Ich muss noch viel üben · 2 = Ich brauche noch Hilfe · 3 = Ich kann es meistens allein · 4 = Ich kann es perfekt' }) : null,
     z.pakete.filter(p => p.kann.length).length ? z.pakete.filter(p => p.kann.length).map(p => el('div', { class: 'karte stapel' },
       el('h2', { text: p.titel }),
       el('p', { class: 'leise klein', text: 'Vorher: wie gut kannst du das jetzt schon? Nachher schätzt du dich beim Fertigmelden der Aufgaben ein.' }),
       p.kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
         k.aufgaben_kuerzel.length ? el('div', { class: 'leise klein', text: 'erarbeitet in ' + k.aufgaben_kuerzel.join(', ') }) : null,
         el('div', { class: 'etikett', text: 'Vorher' }),
-        skala(k, true, k.vorher, async stufe => { try { await schritt('/kann', { kann_id: k.id, stufe }); } catch (e) { L.meldung(e.message, true); } }),
-        k.nachher ? el('div', { class: 'leise klein', text: 'Nachher: ' + STUFEN[k.nachher - 1][1] }) : null))))
+        L.skala(k.vorher, async stufe => { try { await schritt('/kann', { kann_id: k.id, stufe }); } catch (e) { L.meldung(e.message, true); } }, zahlen()),
+        k.nachher || k.lehrkraft ? el('div', { class: 'kann-vergleich' },
+          el('span', {}, 'Nachher: ', el('b', { text: L.stufeText(k.nachher, zahlen()) })),
+          k.lehrkraft ? el('span', {}, 'Lehrkraft: ', el('b', { text: L.stufeText(k.lehrkraft, zahlen()) })) : null) : null))))
       : el('div', { class: 'leer', text: 'Für deine Pakete gibt es noch keine Kann-Liste.' }));
 }
 
@@ -186,19 +402,17 @@ async function nachfragen() {
     await L.dialog({
       titel: 'Neues Paket: ' + p.titel, knopf: 'Speichern', abbrechen: 'Später',
       inhalt: el('div', { class: 'stapel' }, el('p', { text: 'Bevor du planst: Wie gut kannst du das jetzt schon?' }),
-        p.kann.filter(k => !k.vorher).map(k => {
-          let ort;
-          const neu = () => skala(k, true, werte[k.id], stufe => { werte[k.id] = stufe; ort.replaceWith(ort = neu()); });
-          ort = neu();
-          return el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text), ort);
-        })),
+        p.kann.filter(k => !k.vorher).map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+          L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))),
       speichern: async () => {
         for (const [kid, stufe] of Object.entries(werte)) z = await api('/kann', { kann_id: Number(kid), stufe });
         zeigen();
         return true;
       },
     });
+    return;
   }
+  if (z.ungelesen && location.hash !== '#rueck') L.meldung(z.ungelesen === 1 ? 'Du hast eine neue Rückmeldung.' : 'Du hast ' + z.ungelesen + ' neue Rückmeldungen.');
 }
 
 async function wahlFragen(r, g) {
@@ -239,5 +453,20 @@ async function wahlFragen(r, g) {
   document.getElementById('wer').textContent = ich.vorname + ' ' + ich.nachname + ' · ' + ich.klasse;
   window.addEventListener('hashchange', zeigen);
   zeigen();
-  setInterval(async () => { if (!document.querySelector('dialog')) { try { await laden(); } catch (e) { /* still */ } } }, 120000);
+  // Hilfe live: solange der Schüler in der Reihe steht, alle 10 Sekunden den Platz holen
+  setInterval(async () => {
+    if (!z || !z.hilfe.offen || document.hidden) return;
+    try {
+      const h = await api('/hilfe');
+      if (h.offen !== z.hilfe.offen || h.platz !== z.hilfe.platz) {
+        z.hilfe = h;
+        hilfeAnzeigen();
+        if (!h.offen) L.meldung('Deine Hilfe-Meldung ist erledigt.');
+      }
+    } catch (e) { /* still */ }
+  }, 10000);
+  setInterval(async () => {
+    if (document.querySelector('dialog') || document.hidden) return;
+    try { const alt = z.ungelesen; await laden(); if (z.ungelesen !== alt && location.hash !== '#rueck') zeigen(); else { leisteZahlen(); hilfeAnzeigen(); } } catch (e) { /* still */ }
+  }, 120000);
 })();

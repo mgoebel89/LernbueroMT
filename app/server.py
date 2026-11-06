@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import VERSION, db, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, unterrichtstage, updates
+from . import VERSION, db, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, rueckmeldung, termine, unterrichtstage, updates
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -209,7 +209,8 @@ class Handler(BaseHTTPRequestHandler):
         except klassen.KeinZugriff as f:
             self.antwort(403, {"fehler": str(f)})
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
-                unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler) as f:
+                unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
+                rueckmeldung.RueckmeldungFehler, termine.TerminFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -293,7 +294,8 @@ def api_abmelden(h, con, daten):
 
 def api_ich(h, con, daten):
     k = h.konto(con, vorlaeufig_ok=True)
-    h.antwort(200, {"konto": k, "version": VERSION, "update": updates.kurz() if k["rolle"] == "admin" else None})
+    h.antwort(200, {"konto": k, "version": VERSION, "update": updates.kurz() if k["rolle"] == "admin" else None,
+                    "zu_pruefen": rueckmeldung.zaehler(con, k)})
 
 
 def api_passwort(h, con, daten):
@@ -655,8 +657,17 @@ def api_schueler_ich(h, con, daten, code):
                     "einschaetzer": s["einschaetzer"], "code": klassen.code_anzeigen(klassen.code_normalisieren(code))})
 
 
+def _schueler_alles(con, s):
+    """Der ganze Stand der Schuelerseite: Plan, Hilfe-Knopf, Termine, Zahl der neuen Rueckmeldungen."""
+    z = lernplan.zustand(con, s)
+    z["hilfe"] = termine.hilfe_stand(con, s)
+    z["termine"] = termine.termine_schueler(con, s)
+    z["ungelesen"] = rueckmeldung.fuer_schueler(con, s)["ungelesen"]
+    return z
+
+
 def api_schueler_plan(h, con, daten, code):
-    h.antwort(200, lernplan.zustand(con, _schueler(h, con, code)))
+    h.antwort(200, _schueler_alles(con, _schueler(h, con, code)))
 
 
 def _schueler_schritt(funktion):
@@ -665,8 +676,28 @@ def _schueler_schritt(funktion):
         s = _schueler(h, con, code)
         with db.transaktion(con):
             funktion(con, s, daten)
-        h.antwort(200, lernplan.zustand(con, s))
+        h.antwort(200, _schueler_alles(con, s))
     return api
+
+
+def api_schueler_hilfe(h, con, daten, code):
+    h.antwort(200, termine.hilfe_stand(con, _schueler(h, con, code)))
+
+
+def api_schueler_rueckmeldungen(h, con, daten, code):
+    h.antwort(200, rueckmeldung.fuer_schueler(con, _schueler(h, con, code)))
+
+
+def api_schueler_plaetze(h, con, daten, code):
+    s = _schueler(h, con, code)
+    art = h.abfrage("art", "feedback")
+    if art not in termine.TERMINARTEN:
+        raise Fehler(400, "Ungültige Art.")
+    h.antwort(200, {"plaetze": termine.freie_plaetze(con, s, art)})
+
+
+def _optional_id(daten, name):
+    return _ganzzahl(daten.get(name)) if daten.get(name) not in (None, "") else None
 
 
 def _ganzzahl_feld(daten, name):
@@ -679,7 +710,109 @@ SCHUELER_SCHRITTE = {
     "ausfall": lambda con, s, d: (lernplan.ausfall_verschieben if d.get("aktion") == "verschieben" else lernplan.ausfall_entfernen)(con, s),
     "abschluss": lambda con, s, d: lernplan.tag_abschliessen(con, s, d.get("eintraege") or []),
     "kann": lambda con, s, d: lernplan.kann_einschaetzen(con, s, _ganzzahl_feld(d, "kann_id"), d.get("stufe")),
+    "fertig": lambda con, s, d: rueckmeldung.fertig_melden(con, s, _ganzzahl_feld(d, "aufgabe_id"), rueckmeldung.json_kann(d.get("kann"))),
+    "fertig_zurueck": lambda con, s, d: rueckmeldung.zurueckziehen(con, s, _ganzzahl_feld(d, "meldung_id")),
+    "gelesen": lambda con, s, d: rueckmeldung.gelesen(con, s),
+    "empfehlung": lambda con, s, d: rueckmeldung.empfehlung_erledigt(con, s, _ganzzahl_feld(d, "empfehlung_id"), bool(d.get("erledigt", True))),
+    "hilfe": lambda con, s, d: (termine.hilfe_zurueckziehen(con, s) if d.get("aktion") == "zurueck"
+                                else termine.hilfe_rufen(con, s, _optional_id(d, "aufgabe_id"))),
+    "termin": lambda con, s, d: termine.buchen(con, s, _ganzzahl_feld(d, "zeitfenster_id"), d.get("datum"), str(d.get("beginn") or ""),
+                                               d.get("art") or "feedback", d.get("anlass")),
+    "termin_absagen": lambda con, s, d: termine.absagen_schueler(con, s, _ganzzahl_feld(d, "termin_id")),
 }
+
+
+# --- Lehrkraft: Jetzt, Rueckmeldung, Empfehlungen, Zeitfenster (Stufe D) ---
+
+def api_jetzt(h, con, daten):
+    k = h.konto(con)
+    h.antwort(200, {"hilfe": termine.hilfe_reihe(con, k), "termine": termine.termine_heute(con, k),
+                    "eingang": rueckmeldung.eingang(con, k), "entwuerfe": rueckmeldung.entwuerfe(con, k)})
+
+
+def api_hilfe_erledigt(h, con, daten, hid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        termine.hilfe_erledigt(con, k, _ganzzahl(hid))
+    h.antwort(200, {"hilfe": termine.hilfe_reihe(con, k)})
+
+
+def api_rueckmeldung_vorlage(h, con, daten):
+    k = h.konto(con)
+
+    def zahl(n):
+        return _ganzzahl(h.abfrage(n)) if h.abfrage(n) else None
+    h.antwort(200, rueckmeldung.vorlage(con, k, _ganzzahl(h.abfrage("schueler")), meldung_id=zahl("meldung"), termin_id=zahl("termin"),
+                                        rueckmeldung_id=zahl("rueckmeldung"), aufgabe_id=zahl("aufgabe")))
+
+
+def api_rueckmeldung_speichern(h, con, daten):
+    k = h.konto(con)
+    with db.transaktion(con):
+        rid = rueckmeldung.speichern(con, k, daten, freigeben=bool(daten.get("freigeben")))
+    h.antwort(200, {"id": rid, "freigegeben": bool(daten.get("freigeben"))})
+
+
+def api_rueckmeldung_verwerfen(h, con, daten, rid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        rueckmeldung.verwerfen(con, k, _ganzzahl(rid))
+    h.antwort(200, {"ok": True})
+
+
+def _schueler_der_klasse(con, kid, sid):
+    s = con.execute("SELECT id FROM schueler WHERE id = ? AND klasse_id = ?", (_ganzzahl(sid), _ganzzahl(kid))).fetchone()
+    if s is None:
+        raise Fehler(404, "Diesen Schüler gibt es in der Klasse nicht.")
+    return s["id"]
+
+
+def api_schueler_rueckmeldungen_lk(h, con, daten, kid, sid):
+    k = h.konto(con)
+    h.antwort(200, rueckmeldung.fuer_lehrkraft(con, k, _schueler_der_klasse(con, kid, sid)))
+
+
+def api_empfehlung_anlegen(h, con, daten, kid, sid):
+    k = h.konto(con)
+    s = _schueler_der_klasse(con, kid, sid)
+    with db.transaktion(con):
+        rueckmeldung.empfehlung_anlegen(con, k, s, daten)
+    h.antwort(200, rueckmeldung.fuer_lehrkraft(con, k, s))
+
+
+def api_empfehlung_entfernen(h, con, daten, eid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        rueckmeldung.empfehlung_entfernen(con, k, _ganzzahl(eid))
+    h.antwort(200, {"ok": True})
+
+
+def api_zeitfenster(h, con, daten, kid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    h.antwort(200, {"zeitfenster": termine.zeitfenster_liste(con, k, kid), "belegung": termine.belegung(con, k, kid),
+                    "rolle": klassen.zugriff(con, kid, k)})
+
+
+def api_zeitfenster_anlegen(h, con, daten, kid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        e = termine.zeitfenster_anlegen(con, k, _ganzzahl(kid), daten)
+    h.antwort(200, e)
+
+
+def api_zeitfenster_entfernen(h, con, daten, zid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        n = termine.zeitfenster_entfernen(con, k, _ganzzahl(zid))
+    h.antwort(200, {"abgesagt": n})
+
+
+def api_termin_absagen(h, con, daten, tid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        termine.absagen_lehrkraft(con, k, _ganzzahl(tid))
+    h.antwort(200, {"ok": True})
 
 
 def api_matrix(h, con, daten, kid):
@@ -698,6 +831,7 @@ def api_schuelerplan(h, con, daten, kid, sid):
     if s is None:
         raise Fehler(404, "Diesen Schüler gibt es in der Klasse nicht.")
     h.antwort(200, {"schueler": {"id": s["id"], "vorname": s["vorname"], "nachname": s["nachname"], "aktiv": bool(s["aktiv"])},
+                    "einschaetzer": con.execute("SELECT einschaetzer FROM klasse WHERE id = ?", (kid,)).fetchone()[0],
                     "plan": lernplan.zustand(con, s), "entscheidungen": lernplan.entscheidungen(con, s["id"])})
 
 
@@ -708,6 +842,28 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/ausfall", _schueler_schritt(SCHUELER_SCHRITTE["ausfall"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/abschluss", _schueler_schritt(SCHUELER_SCHRITTE["abschluss"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/kann", _schueler_schritt(SCHUELER_SCHRITTE["kann"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/fertig", _schueler_schritt(SCHUELER_SCHRITTE["fertig"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/fertig/zurueck", _schueler_schritt(SCHUELER_SCHRITTE["fertig_zurueck"])),
+    ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/rueckmeldungen", api_schueler_rueckmeldungen),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/rueckmeldungen/gelesen", _schueler_schritt(SCHUELER_SCHRITTE["gelesen"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/empfehlung", _schueler_schritt(SCHUELER_SCHRITTE["empfehlung"])),
+    ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/hilfe", api_schueler_hilfe),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/hilfe", _schueler_schritt(SCHUELER_SCHRITTE["hilfe"])),
+    ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/plaetze", api_schueler_plaetze),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin", _schueler_schritt(SCHUELER_SCHRITTE["termin"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin/absagen", _schueler_schritt(SCHUELER_SCHRITTE["termin_absagen"])),
+    ("GET", r"/api/jetzt", api_jetzt),
+    ("POST", r"/api/hilfe/(\d+)/erledigt", api_hilfe_erledigt),
+    ("GET", r"/api/rueckmeldung/vorlage", api_rueckmeldung_vorlage),
+    ("POST", r"/api/rueckmeldung", api_rueckmeldung_speichern),
+    ("POST", r"/api/rueckmeldung/(\d+)/verwerfen", api_rueckmeldung_verwerfen),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/rueckmeldungen", api_schueler_rueckmeldungen_lk),
+    ("POST", r"/api/klassen/(\d+)/schueler/(\d+)/empfehlungen", api_empfehlung_anlegen),
+    ("POST", r"/api/empfehlungen/(\d+)/entfernen", api_empfehlung_entfernen),
+    ("GET", r"/api/klassen/(\d+)/zeitfenster", api_zeitfenster),
+    ("POST", r"/api/klassen/(\d+)/zeitfenster", api_zeitfenster_anlegen),
+    ("POST", r"/api/zeitfenster/(\d+)/entfernen", api_zeitfenster_entfernen),
+    ("POST", r"/api/termine/(\d+)/absagen", api_termin_absagen),
     ("GET", r"/api/klassen/(\d+)/matrix", api_matrix),
     ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/plan", api_schuelerplan),
     ("GET", r"/api/status", api_status),

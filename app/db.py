@@ -241,6 +241,102 @@ MIGRATIONEN = [
         wer TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (schueler_id, kann_id, art))
     """,
+    # 4: Melden, Rueckmeldung, Empfehlungen, Hilfe-Reihe, Sprech- und Pruefungszeiten (Stufe D)
+    """
+    CREATE TABLE meldung (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        zeit TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'offen' CHECK (status IN ('offen', 'angenommen', 'ueberarbeiten', 'zurueckgezogen')),
+        entschieden TEXT,
+        entschieden_von INTEGER REFERENCES lehrkraft(id));
+    CREATE INDEX meldung_schueler ON meldung (schueler_id, aufgabe_id);
+    CREATE TABLE schueler_frist (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        frist TEXT NOT NULL,
+        grund TEXT NOT NULL DEFAULT 'ueberarbeiten',
+        PRIMARY KEY (schueler_id, aufgabe_id));
+    CREATE TABLE rueckmeldung (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        verfasser_id INTEGER NOT NULL REFERENCES lehrkraft(id),
+        meldung_id INTEGER REFERENCES meldung(id) ON DELETE SET NULL,
+        termin_id INTEGER,
+        aufgabe_id INTEGER REFERENCES aufgabe(id) ON DELETE SET NULL,
+        paket_id INTEGER REFERENCES paket(id) ON DELETE SET NULL,
+        text TEXT NOT NULL DEFAULT '',
+        entscheidung TEXT CHECK (entscheidung IN ('angenommen', 'ueberarbeiten')),
+        neue_frist TEXT,
+        erstellt TEXT NOT NULL,
+        geaendert TEXT NOT NULL,
+        freigegeben TEXT,
+        gelesen TEXT);
+    CREATE INDEX rueckmeldung_schueler ON rueckmeldung (schueler_id);
+    CREATE TABLE rueckmeldung_kann (
+        rueckmeldung_id INTEGER NOT NULL REFERENCES rueckmeldung(id) ON DELETE CASCADE,
+        kann_id INTEGER NOT NULL REFERENCES kann_aussage(id) ON DELETE CASCADE,
+        stufe INTEGER NOT NULL CHECK (stufe BETWEEN 1 AND 4),
+        PRIMARY KEY (rueckmeldung_id, kann_id));
+    CREATE TABLE empfehlung (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        rueckmeldung_id INTEGER REFERENCES rueckmeldung(id) ON DELETE CASCADE,
+        verfasser_id INTEGER NOT NULL REFERENCES lehrkraft(id),
+        verbindlich INTEGER NOT NULL DEFAULT 0,
+        frist TEXT,
+        hinweis TEXT NOT NULL DEFAULT '',
+        erstellt TEXT NOT NULL,
+        freigegeben TEXT,
+        erledigt TEXT,
+        entfernt TEXT);
+    CREATE INDEX empfehlung_schueler ON empfehlung (schueler_id);
+    CREATE TABLE hilfe (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER REFERENCES aufgabe(id) ON DELETE SET NULL,
+        datum TEXT NOT NULL,
+        zeit TEXT NOT NULL,
+        ende TEXT,
+        ende_art TEXT CHECK (ende_art IN ('erledigt', 'zurueckgezogen')),
+        ende_von INTEGER REFERENCES lehrkraft(id));
+    CREATE INDEX hilfe_klasse ON hilfe (klasse_id, datum);
+    CREATE TABLE zeitfenster (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        lehrkraft_id INTEGER NOT NULL REFERENCES lehrkraft(id),
+        art TEXT NOT NULL CHECK (art IN ('sprech', 'pruefung')),
+        von TEXT NOT NULL,
+        bis TEXT NOT NULL,
+        dauer INTEGER NOT NULL,
+        puffer INTEGER NOT NULL DEFAULT 0,
+        wochentag INTEGER,
+        gueltig_von TEXT,
+        gueltig_bis TEXT,
+        tage TEXT NOT NULL DEFAULT '[]',
+        aktiv INTEGER NOT NULL DEFAULT 1,
+        erstellt TEXT NOT NULL);
+    CREATE INDEX zeitfenster_klasse ON zeitfenster (klasse_id);
+    CREATE TABLE termin (
+        id INTEGER PRIMARY KEY,
+        zeitfenster_id INTEGER NOT NULL REFERENCES zeitfenster(id) ON DELETE CASCADE,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        datum TEXT NOT NULL,
+        beginn TEXT NOT NULL,
+        ende TEXT NOT NULL,
+        art TEXT NOT NULL CHECK (art IN ('feedback', 'fachgespraech', 'praxis')),
+        anlass_aufgabe_id INTEGER REFERENCES aufgabe(id) ON DELETE SET NULL,
+        anlass_paket_id INTEGER REFERENCES paket(id) ON DELETE SET NULL,
+        anlass_text TEXT NOT NULL DEFAULT '',
+        nachweis_id INTEGER,
+        gebucht TEXT NOT NULL,
+        abgesagt TEXT,
+        abgesagt_von TEXT);
+    CREATE INDEX termin_platz ON termin (zeitfenster_id, datum, beginn)
+    """,
 ]
 
 

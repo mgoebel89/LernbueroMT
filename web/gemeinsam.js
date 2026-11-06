@@ -89,6 +89,31 @@ const L = {
     runter_pfeil: 'M12 5v14M19 12l-7 7-7-7',
     extern: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
     kopie: 'M8 8h12v12H8zM16 8V4H4v12h4',
+    haken: 'M20 6 9 17l-5-5',
+    uhr: 'M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20M12 6v6l4 2',
+    pruefen: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
+    mikro: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
+    stern: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z',
+    zu: 'M18 6 6 18M6 6l12 12',
+  },
+
+  // Einschaetzung in 4 Stufen: gespeichert wird immer 1 bis 4, die Klasse zeigt Smileys oder Zahlen
+  STUFEN: [['😟', 'muss viel üben', 'Ich muss noch viel üben'], ['😐', 'brauche Hilfe', 'Ich brauche noch Hilfe'],
+    ['🙂', 'meist allein', 'Ich kann es meistens allein'], ['😀', 'kann es perfekt', 'Ich kann es perfekt']],
+  stufeText(wert, zahlen) {
+    if (!wert) return '–';
+    const s = L.STUFEN[wert - 1];
+    return (zahlen ? String(wert) : s[0]) + ' ' + s[1];
+  },
+  // Vier Knoepfe; aendern(stufe) bei Klick. Ohne aendern nur Anzeige.
+  skala(wert, aendern, zahlen) {
+    let ort;
+    const neu = w => L.el('div', { class: 'skala' }, L.STUFEN.map(([smiley, text], i) => L.el('button', {
+      type: 'button', class: w === i + 1 ? 'an' : null, disabled: !aendern,
+      onclick: () => { aendern(i + 1); const n = neu(i + 1); ort.replaceWith(n); ort = n; } },
+    L.el('b', { text: zahlen ? String(i + 1) : smiley }), text)));
+    ort = neu(wert);
+    return ort;
   },
 
   symbol(name) {
@@ -105,24 +130,29 @@ const L = {
 
   // Overlay mit einer Frage. inhalt: Element(e); speichern(form) darf einen Fehler werfen: er erscheint im Fenster.
   // Rueckgabe: Promise mit dem Ergebnis von speichern() oder null bei Abbrechen.
-  dialog({ titel, inhalt, knopf = 'Speichern', abbrechen = 'Abbrechen', speichern, gefaehrlich = false, breit = false }) {
+  // weitere: [{ text, speichern(form) }] zusaetzliche Knoepfe vor dem Hauptknopf (z. B. "Entwurf speichern")
+  dialog({ titel, inhalt, knopf = 'Speichern', abbrechen = 'Abbrechen', speichern, gefaehrlich = false, breit = false, weitere = [], fuss = null }) {
     return new Promise(fertig => {
       const fehler = L.el('div', { class: 'fehlertext', role: 'alert' });
       const ok = knopf ? L.el('button', { type: 'submit', class: gefaehrlich ? 'warnen' : 'haupt', text: knopf }) : null;
+      const alle = [];
+      const ausfuehren = async (funktion, knopfEl) => {
+        fehler.textContent = '';
+        alle.forEach(b => { b.disabled = true; });
+        try { schliessen(funktion ? await funktion(form) : true); }
+        catch (e) { fehler.textContent = e.message; alle.forEach(b => { b.disabled = false; }); }
+      };
+      const extra = weitere.map(w => L.el('button', { type: 'button', text: w.text, class: w.klasse || null, onclick: ev => ausfuehren(w.speichern, ev.currentTarget) }));
       const form = L.el('form', { method: 'dialog' },
         L.el('h2', { class: 'dreieck', text: titel }), inhalt, fehler,
-        L.el('div', { class: 'knoepfe' },
-          abbrechen ? L.el('button', { type: 'button', text: abbrechen, onclick: () => schliessen(null) }) : null, ok));
+        L.el('div', { class: 'knoepfe' + (extra.length ? ' mehr' : '') }, fuss ? L.el('span', { class: 'fuss leise klein' }, fuss) : null,
+          abbrechen ? L.el('button', { type: 'button', text: abbrechen, onclick: () => schliessen(null) }) : null, extra, ok));
+      alle.push(...extra);
+      if (ok) alle.push(ok);
       const d = L.el('dialog', { class: breit ? 'breit' : null }, form);
       const schliessen = wert => { d.close(); d.remove(); fertig(wert); };
       d.addEventListener('cancel', ev => { ev.preventDefault(); schliessen(null); });
-      form.addEventListener('submit', async ev => {
-        ev.preventDefault();
-        fehler.textContent = '';
-        if (ok) ok.disabled = true;
-        try { schliessen(speichern ? await speichern(form) : true); }
-        catch (e) { fehler.textContent = e.message; if (ok) ok.disabled = false; }
-      });
+      form.addEventListener('submit', ev => { ev.preventDefault(); ausfuehren(speichern, ok); });
       document.body.appendChild(d);
       d.showModal();
       const erstes = form.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
@@ -136,6 +166,12 @@ const L = {
     if (!iso) return '';
     const d = new Date(iso.slice(0, 10) + 'T12:00:00');
     return L.TAGE[d.getDay()] + ' ' + iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + (jahr ? iso.slice(0, 4) : '');
+  },
+  uhr(zeit) { return zeit ? zeit.slice(11, 16) : ''; },
+  // '2026-11-05T09:12:00' -> 'heute 09:12' / 'Do 05.11. 09:12'
+  wann(zeit) {
+    if (!zeit) return '';
+    return (zeit.slice(0, 10) === L.heute() ? 'heute' : L.tag(zeit)) + ' ' + zeit.slice(11, 16);
   },
   heute() {
     const d = new Date();

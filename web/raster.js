@@ -4,17 +4,25 @@
 'use strict';
 const Raster = (() => {
   const el = L.el;
-  const STATUS = { offen: ['offen', 'offen'], geplant: ['geplant', 'geplant'], arbeit: ['arbeit', 'in Arbeit'] };
+  const STATUS = { offen: ['offen', 'offen'], geplant: ['geplant', 'geplant'], arbeit: ['arbeit', 'in Arbeit'],
+    fertig: ['fertig', 'fertig gemeldet'], angenommen: ['angenommen', 'angenommen'], ueberarbeiten: ['ueberarbeiten', 'überarbeiten'] };
   const plant = t => t.status === 'unterricht' || t.status === 'ohne';
 
   function statusChip(r) {
-    if (r.ueber_frist && r.status !== 'offen') return el('span', { class: 'sc spaet', text: 'Frist überschritten' });
     if (r.ueber_frist) return el('span', { class: 'sc spaet', text: 'Frist überschritten' });
-    const s = STATUS[r.status];
-    return el('span', { class: 'sc ' + s[0], text: s[1] });
+    const s = STATUS[r.status] || STATUS.offen;
+    return el('span', { class: 'sc ' + s[0], text: r.status === 'ueberarbeiten' && r.wirksam ? 'überarbeiten bis ' + L.tag(r.wirksam) : s[1] });
   }
 
-  // z: Zustand von /api/s/<code>/plan; o: { bearbeitbar, planen(aufgabe_id, hinzu, weg), waehlen(zeile, gruppe) }
+  function empfehlungChip(r) {
+    const offen = (r.empfehlungen || []).filter(e => !e.erledigt);
+    if (!offen.length) return null;
+    const v = offen.find(e => e.verbindlich);
+    return el('span', { class: 'chip ' + (v ? 'lila' : 'lila-hell') + ' klein', title: offen.map(e => e.hinweis).filter(Boolean).join(' · ') || null },
+      L.symbol('stern'), v ? 'verbindlich' + (v.wirksam ? ' bis ' + L.tag(v.wirksam) : '') : 'empfohlen');
+  }
+
+  // z: Zustand von /api/s/<code>/plan; o: { bearbeitbar, planen(aufgabe_id, hinzu, weg), waehlen(zeile, gruppe), oeffnen(zeile, gruppe) }
   function zeichnen(z, o = {}) {
     const tage = z.spalten;
     const kopf = el('tr', {}, el('th', { class: 'links', text: 'Aufgabe' }), el('th', { class: 'links', text: 'Stand' }),
@@ -26,6 +34,11 @@ const Raster = (() => {
         el('span', { class: 'pm', text: [p.lernfeld, p.frist && p.frist.wirksam ? 'Paket-Frist ' + L.tag(p.frist.wirksam) : ''].filter(Boolean).join(' · ') }))));
       let gruppe = null;
       p.zeilen.forEach(r => {
+        if (r.typ === 'empfohlen') {
+          koerper.appendChild(el('tr', { class: 'wahl emp' }, el('td', { colspan: tage.length + 2 },
+            el('span', {}, L.symbol('stern')), o.bearbeitbar ? 'Empfohlen für dich' : 'Empfohlene Zusatzaufgaben')));
+          return;
+        }
         if (r.typ === 'gruppe') {
           gruppe = r;
           koerper.appendChild(el('tr', { class: 'wahl' }, el('td', { colspan: tage.length + 2 },
@@ -52,13 +65,15 @@ const Raster = (() => {
       const planbar = o.bearbeitbar && r.gewaehlt;
       const knopf = o.bearbeitbar && r.art === 'wahl'
         ? el('button', { type: 'button', class: 'klein', onclick: () => o.waehlen(r, g) }, r.gewaehlt ? 'abwählen' : 'wählen') : null;
-      return el('tr', { class: r.gewaehlt ? null : 'blass', 'data-aufgabe': r.id, 'data-planbar': planbar ? '1' : null },
-        el('td', { class: 'auf', title: r.titel },
-          el('span', { class: 'kz', text: r.kuerzel }),
+      const kz = o.oeffnen ? el('button', { type: 'button', class: 'kz', title: 'Aufgabe öffnen', text: r.kuerzel, onclick: () => o.oeffnen(r, g) })
+        : el('span', { class: 'kz', text: r.kuerzel });
+      return el('tr', { class: [r.gewaehlt ? '' : 'blass', r.art === 'zusatz' ? 'zusatz' : ''].join(' ').trim() || null, 'data-aufgabe': r.id,
+        'data-planbar': planbar ? '1' : null },
+        el('td', { class: 'auf', title: r.titel }, kz,
           r.moodle_link ? el('a', { class: 'alink', href: r.moodle_link, target: '_blank', rel: 'noopener', text: r.titel }) : r.titel,
-          r.art === 'pflicht' ? el('span', { class: 'art', text: 'Pflicht' }) : null),
+          r.art === 'pflicht' ? el('span', { class: 'art', text: 'Pflicht' }) : r.art === 'zusatz' ? el('span', { class: 'art', text: r.zusatz_art === 'vertiefung' ? 'Vertiefung' : 'Wiederholung' }) : null),
         el('td', { class: 'st' }, r.gewaehlt ? statusChip(r) : null, r.ampel && r.gewaehlt ? el('span', { class: 'ampel a-' + r.ampel, title: 'letzte Ampel' }) : null,
-          knopf ? ' ' : null, knopf, r.plant_nach_frist && r.gewaehlt ? el('span', { class: 'chip rot klein', text: 'nach der Frist' }) : null),
+          knopf ? ' ' : null, knopf, r.plant_nach_frist && r.gewaehlt ? el('span', { class: 'chip rot klein', text: 'nach der Frist' }) : null, empfehlungChip(r)),
         tage.map((t, i) => {
           const geplant = r.plan.includes(t.datum), voriger = i > 0 && r.plan.includes(tage[i - 1].datum), naechster = i < tage.length - 1 && r.plan.includes(tage[i + 1].datum);
           const kann = planbar && plant(t) && t.datum >= z.heute;
@@ -129,9 +144,20 @@ const Raster = (() => {
       code_erneuert: () => 'neuer Zugangscode',
       schueler_umbenannt: () => 'umbenannt: ' + d.alt + ' → ' + d.name,
       schueler_archiviert: () => 'archiviert', schueler_aktiv: () => 'wieder aktiv',
+      fertig: () => d.kuerzel + ' fertig gemeldet' + (d.kann && d.kann.length ? ' (' + d.kann.map(k => k.kuerzel + ' ' + k.stufe).join(', ') + ')' : ''),
+      fertig_zurueck: () => d.kuerzel + ': Fertigmeldung zurückgezogen',
+      rueckmeldung: () => 'Rückmeldung' + (d.kuerzel ? ' zu ' + d.kuerzel : '') + (d.entscheidung === 'angenommen' ? ': angenommen'
+        : d.entscheidung === 'ueberarbeiten' ? ': überarbeiten bis ' + L.tag(d.neue_frist) : '')
+        + (d.empfehlungen && d.empfehlungen.length ? ', empfohlen: ' + d.empfehlungen.map(e => e.kuerzel + (e.verbindlich ? ' (verbindlich)' : '')).join(', ') : ''),
+      empfehlung: () => d.kuerzel + ' empfohlen' + (d.verbindlich ? ', verbindlich bis ' + L.tag(d.frist) : ''),
+      empfehlung_entfernt: () => 'Empfehlung ' + d.kuerzel + ' entfernt',
+      empfehlung_erledigt: () => 'Empfehlung ' + d.kuerzel + ' erledigt', empfehlung_offen: () => 'Empfehlung ' + d.kuerzel + ' wieder offen',
+      hilfe: () => 'Hilfe gerufen', hilfe_zurueck: () => 'Hilfe zurückgezogen', hilfe_erledigt: () => 'Hilfe erledigt',
+      termin_gebucht: () => 'Feedbacktermin gebucht: ' + L.tag(d.datum) + ' ' + d.beginn,
+      termin_abgesagt: () => 'Termin ' + L.tag(d.datum) + ' ' + d.beginn + ' abgesagt',
     };
     try { return (texte[e.art] || (() => e.art))(); } catch (f) { return e.art; }
   }
 
-  return { zeichnen, ereignisText };
+  return { zeichnen, ereignisText, statusChip, STATUS };
 })();
