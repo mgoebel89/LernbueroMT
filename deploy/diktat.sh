@@ -15,7 +15,7 @@ MODELL="${LERNBUERO_DIKTAT_MODELL:-$(cat "$MODELLE/modell" 2>/dev/null || echo s
 PAKETE="faster-whisper==1.1.1 huggingface_hub<1.0 requests av<14"
 
 if [ -x "$UMGEBUNG/bin/python" ] && "$UMGEBUNG/bin/python" -c 'import faster_whisper' 2>/dev/null \
-    && [ -f "$MODELLE/fertig-$MODELL" ]; then
+    && [ "$(cat "$UMGEBUNG/pakete" 2>/dev/null)" = "$PAKETE" ] && [ -f "$MODELLE/fertig-$MODELL" ]; then
   echo "    Diktat: bereit (Modell $MODELL)"
   exit 0
 fi
