@@ -68,11 +68,12 @@ async function start() {
 }
 
 async function zeigen() {
-  const [ansicht, id] = (location.hash.slice(1) || 'uebersicht').split('/');
-  const nav = ansicht === 'klasse' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht;
+  const [ansicht, id, id2] = (location.hash.slice(1) || 'uebersicht').split('/');
+  const nav = ansicht === 'klasse' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht === 'schueler' ? 'uebersicht' : ansicht;
   document.querySelectorAll('nav.seite a').forEach(a => a.classList.toggle('an', a.dataset.ansicht === nav));
   try {
-    if (ansicht === 'uebersicht') await uebersichtZeigen();
+    if (ansicht === 'uebersicht') await uebersichtZeigen(Number(id) || null, Number(id2) || null);
+    else if (ansicht === 'schueler') await schuelerZeigen(Number(id), Number(id2));
     else if (ansicht === 'pakete') await Pakete.uebersicht(Number(id) || null);
     else if (ansicht === 'paket') await Pakete.editor(Number(id));
     else if (ansicht === 'klassen') await klassenZeigen(false);
@@ -98,15 +99,59 @@ async function passwortPflicht() {
 
 // --- Uebersicht (Stufe C/D) ---
 
-async function uebersichtZeigen() {
+const MZ = { offen: '–', geplant: '▭', arbeit: '◐' };
+
+async function uebersichtZeigen(kid, pid) {
   titelSetzen('Übersicht');
   const { klassen } = await L.api('GET', '/api/klassen');
+  const meine = klassen.filter(k => k.rolle === 'team' || k.rolle === 'einsicht');
+  if (!meine.length) {
+    L.setzen(inhalt, el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' })),
+      el('div', { class: 'leer' }, 'Noch keine Klasse. ', el('a', { href: '#klassen', text: 'Erste Klasse anlegen' })));
+    return;
+  }
+  const k = meine.find(x => x.id === kid) || meine[0];
+  const m = await L.api('GET', '/api/klassen/' + k.id + '/matrix' + (pid ? '?paket=' + pid : ''));
+  const kw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + ev.target.value; } }, meine.map(x => el('option', { value: x.id, text: x.name })));
+  kw.value = k.id;
+  const pw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + k.id + '/' + ev.target.value; } },
+    m.pakete.map(p => el('option', { value: p.id, text: p.titel + (p.freigabe ? '' : ' (Entwurf)') })));
+  if (m.paket) pw.value = m.paket.id;
   L.setzen(inhalt,
-    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' })),
-    el('div', { class: 'banner' }, 'Hilfe-Reihe, „Zu prüfen“, Bereit-Liste und Klassenmatrix kommen mit den Stufen C und D. ',
-      'Jetzt in Stufe A: Klassen anlegen, Teilnehmerliste aus Moodle übernehmen und QR-Karten drucken.'),
-    klassen.length ? el('div', { class: 'raster' }, klassen.map(klassenKarte))
-      : el('div', { class: 'leer' }, 'Noch keine Klasse. ', el('a', { href: '#klassen', text: 'Erste Klasse anlegen' })));
+    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' }), kw, m.pakete.length ? pw : null),
+    el('div', { class: 'banner klein', text: 'Hilfe-Reihe, „Zu prüfen“ und Bereit-Liste kommen mit den Stufen D und E. Die Klassenmatrix zeigt schon jetzt Plan, Ist und Ampel.' }),
+    !m.paket ? el('div', { class: 'leer' }, 'Noch kein Paket für ' + k.name + '. ', el('a', { href: '#pakete/' + k.id, text: 'Paket anlegen' }))
+      : el('div', { class: 'karte stapel' },
+        el('div', { class: 'legende' }, ['offen', 'geplant', 'arbeit'].map(s => el('span', {}, el('i', { class: 'mz ' + s, style: 'min-width:20px;height:16px', text: MZ[s] }),
+          { offen: 'offen', geplant: 'geplant', arbeit: 'in Arbeit' }[s])), el('span', {}, el('i', { class: 'mz fehlt', style: 'min-width:20px;height:16px', text: '?' }), 'Wahl fehlt'),
+          el('span', {}, el('i', { class: 'mz geplant ueber', style: 'min-width:20px;height:16px' }), 'Frist überschritten')),
+        el('div', { class: 'rollbar' }, el('table', { class: 'mx' },
+          el('thead', {}, el('tr', {}, el('th', { class: 'links', text: 'Schüler' }),
+            m.spalten.map(s => el('th', { title: s.titel }, el('span', { class: 'kz', text: s.kuerzel }), s.typ === 'gruppe' ? 'Wahl ' + s.waehlen + '/' + s.anzahl : (s.titel || '').slice(0, 12))),
+            el('th', { text: 'Ampel' }), el('th', { class: 'links', text: 'Hinweis' }))),
+          el('tbody', {}, m.zeilen.map(r => el('tr', {},
+            el('td', { class: 'name' }, el('a', { href: '#schueler/' + k.id + '/' + r.id, text: r.name })),
+            r.zellen.map(c => el('td', {}, el('span', { class: 'mz ' + c.status + (c.ueber_frist ? ' ueber' : ''),
+              text: c.gruppe ? c.text : MZ[c.status] }))),
+            el('td', {}, r.ampel ? el('span', { class: 'ampel a-' + r.ampel }) : el('span', { class: 'ampel a-0' })),
+            el('td', { class: 'hin' + (r.hinweis && r.hinweis !== 'noch nichts geplant' ? ' w' : ''), text: r.hinweis || '–' })))))),
+        el('p', { class: 'leise klein', text: '„Ampel“ zeigt die schlechteste Ampel der laufenden Aufgaben. Ein Klick auf den Namen öffnet den Plan des Schülers.' })));
+}
+
+async function schuelerZeigen(kid, sid) {
+  const d = await L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/plan');
+  const name = d.schueler.vorname + ' ' + d.schueler.nachname;
+  titelSetzen(name);
+  L.setzen(inhalt,
+    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: name }), el('a', { class: 'knopf', href: '#klasse/' + kid, text: 'zur Klasse' }),
+      el('a', { class: 'knopf', href: '#uebersicht/' + kid, text: 'zur Übersicht' })),
+    d.plan.pakete.length ? Raster.zeichnen(d.plan, { bearbeitbar: false }) : el('div', { class: 'leer', text: 'Noch kein freigegebenes Paket.' }),
+    el('div', { class: 'karte stapel' }, el('h2', { text: 'Entscheidungen' }),
+      el('p', { class: 'leise klein', text: 'Die letzten Einträge. Vergleich mit früheren Ständen und Kennzahlen kommen mit Stufe F.' }),
+      d.entscheidungen.length ? el('div', { class: 'liste-klein' }, d.entscheidungen.map(e => el('div', {},
+        el('span', { class: 'dat', text: L.tag(e.zeit) + ' ' + e.zeit.slice(11, 16) }), Raster.ereignisText(e),
+        e.wer_art === 'lehrkraft' ? el('span', { class: 'leise', text: ' (' + e.wer.toUpperCase() + ')' }) : null)))
+        : el('p', { class: 'leise', text: 'Noch keine Einträge.' })));
 }
 
 // --- Klassen ---
@@ -196,7 +241,7 @@ function schuelerKarte(k) {
   const team = k.rolle === 'team';
   const aktiv = k.schueler.filter(s => s.aktiv), alt = k.schueler.filter(s => !s.aktiv);
   const zeile = s => el('tr', { class: s.aktiv ? null : 'aus' },
-    el('td', { text: s.nachname + ', ' + s.vorname }),
+    el('td', {}, el('a', { href: '#schueler/' + k.id + '/' + s.id, text: s.nachname + ', ' + s.vorname })),
     team ? el('td', { class: 'code-text', text: s.code }) : null,
     team ? el('td', { class: 'knoepfe' },
       s.aktiv ? el('button', { type: 'button', class: 'klein', onclick: () => qrZeigen(k, s) }, L.symbol('qr'), 'QR') : null, ' ',

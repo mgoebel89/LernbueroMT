@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import VERSION, db, kalender, klassen, konten, moodle, pakete, pdf, qr, unterrichtstage, updates
+from . import VERSION, db, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, unterrichtstage, updates
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -209,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
         except klassen.KeinZugriff as f:
             self.antwort(403, {"fehler": str(f)})
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
-                unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler) as f:
+                unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -655,7 +655,61 @@ def api_schueler_ich(h, con, daten, code):
                     "einschaetzer": s["einschaetzer"], "code": klassen.code_anzeigen(klassen.code_normalisieren(code))})
 
 
+def api_schueler_plan(h, con, daten, code):
+    h.antwort(200, lernplan.zustand(con, _schueler(h, con, code)))
+
+
+def _schueler_schritt(funktion):
+    """POST der Schuelerseite: aendert etwas am eigenen Plan und gibt den ganzen Stand zurueck."""
+    def api(h, con, daten, code):
+        s = _schueler(h, con, code)
+        with db.transaktion(con):
+            funktion(con, s, daten)
+        h.antwort(200, lernplan.zustand(con, s))
+    return api
+
+
+def _ganzzahl_feld(daten, name):
+    return _ganzzahl(daten.get(name))
+
+
+SCHUELER_SCHRITTE = {
+    "plan": lambda con, s, d: lernplan.planen(con, s, _ganzzahl_feld(d, "aufgabe_id"), d.get("hinzu") or [], d.get("weg") or []),
+    "wahl": lambda con, s, d: lernplan.waehlen(con, s, _ganzzahl_feld(d, "aufgabe_id"), bool(d.get("gewaehlt", True))),
+    "ausfall": lambda con, s, d: (lernplan.ausfall_verschieben if d.get("aktion") == "verschieben" else lernplan.ausfall_entfernen)(con, s),
+    "abschluss": lambda con, s, d: lernplan.tag_abschliessen(con, s, d.get("eintraege") or []),
+    "kann": lambda con, s, d: lernplan.kann_einschaetzen(con, s, _ganzzahl_feld(d, "kann_id"), d.get("stufe")),
+}
+
+
+def api_matrix(h, con, daten, kid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    klassen.pruefen(con, kid, k, "lesen")
+    paket = h.abfrage("paket")
+    h.antwort(200, lernplan.matrix(con, kid, _ganzzahl(paket) if paket else None))
+
+
+def api_schuelerplan(h, con, daten, kid, sid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    klassen.pruefen(con, kid, k, "lesen")
+    s = con.execute("SELECT * FROM schueler WHERE id = ? AND klasse_id = ?", (_ganzzahl(sid), kid)).fetchone()
+    if s is None:
+        raise Fehler(404, "Diesen Schüler gibt es in der Klasse nicht.")
+    h.antwort(200, {"schueler": {"id": s["id"], "vorname": s["vorname"], "nachname": s["nachname"], "aktiv": bool(s["aktiv"])},
+                    "plan": lernplan.zustand(con, s), "entscheidungen": lernplan.entscheidungen(con, s["id"])})
+
+
 ROUTEN = [(m, re.compile(p), f) for m, p, f in [
+    ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/plan", api_schueler_plan),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/plan", _schueler_schritt(SCHUELER_SCHRITTE["plan"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/wahl", _schueler_schritt(SCHUELER_SCHRITTE["wahl"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/ausfall", _schueler_schritt(SCHUELER_SCHRITTE["ausfall"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/abschluss", _schueler_schritt(SCHUELER_SCHRITTE["abschluss"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/kann", _schueler_schritt(SCHUELER_SCHRITTE["kann"])),
+    ("GET", r"/api/klassen/(\d+)/matrix", api_matrix),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/plan", api_schuelerplan),
     ("GET", r"/api/status", api_status),
     ("POST", r"/api/einrichtung", api_einrichtung),
     ("POST", r"/api/anmelden", api_anmelden),

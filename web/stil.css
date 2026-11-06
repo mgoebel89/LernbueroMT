@@ -5,6 +5,7 @@
   --blau: #00639C; --blau-dunkel: #004d7a; --blau-mittel: #7fb1cf; --blau-hell: #e8f2f9;
   --gruen: #9fb400; --gelb: #F8B442; --rot: #D4005E; --rot-hell: #fbe8f0; --lila: #7B4FA0;
   --bg: #f4f6f8; --karte: #fff; --text: #1d2433; --leise: #5d6779; --linie: #e4e7ec; --linie-stark: #cfd4dc; --knopf: #f2f4f7;
+  --b: #5aa9d6;
   --ecke: 16px; --r: 8px;
   --schatten-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
   --schatten-3: 0 20px 40px -12px rgba(16,24,40,.28);
@@ -114,6 +115,87 @@ button.leicht.klein { padding: 2px 4px; min-height: 26px; }
 button.leicht.klein .symbol { width: 15px; height: 15px; }
 td a .symbol { width: 14px; height: 14px; vertical-align: -2px; }
 .chip.klein { font-size: .68rem; padding: 0 6px; margin-left: 4px; }
+/* Lernplan-Raster (Stufe C): Spalten = Unterrichtstage */
+.r-scroll { overflow-x: auto; background: var(--karte); border: 1px solid var(--linie); border-radius: 12px 5px 5px 5px; }
+table.lp { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .85rem; user-select: none; -webkit-user-select: none; }
+.lp th { font-family: var(--mono); font-size: .64rem; color: var(--leise); font-weight: 600; text-align: center; padding: 6px 0 4px; line-height: 1.25;
+  border-bottom: 1px solid var(--linie); white-space: nowrap; }
+.lp th.links { text-align: left; padding-left: 10px; font-family: var(--schrift); text-transform: uppercase; letter-spacing: .07em; font-size: .6rem; }
+.lp th.heute { color: var(--blau); }
+.lp th.aus, .lp th.ferien { opacity: .6; }
+.lp th.ohne { color: #9a6400; }
+.lp td { padding: 0; border-bottom: 1px solid var(--linie); vertical-align: middle; height: 34px; }
+.lp td.auf { padding: 0 10px; white-space: nowrap; min-width: 230px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; position: sticky; left: 0;
+  background: var(--karte); z-index: 1; }
+.lp td.auf .kz { font-family: var(--mono); font-weight: 700; color: var(--blau); margin-right: 7px; font-size: .78rem; }
+.lp td.auf .art { font-size: .6rem; text-transform: uppercase; letter-spacing: .07em; color: var(--leise); margin-left: 6px; font-weight: 700; }
+.lp td.st { padding: 0 8px; white-space: nowrap; min-width: 120px; }
+.lp td.st .ampel { margin-left: 6px; vertical-align: -1px; }
+.lp td.t { width: 48px; min-width: 48px; position: relative; border-left: 1px solid var(--linie); }
+.lp td.t.kann { cursor: pointer; }
+.lp td.t.kann:hover { background: var(--blau-hell); }
+.lp td.t.heute { background: var(--blau-hell); }
+.lp td.t.aus, .lp td.t.ferien { background: repeating-linear-gradient(135deg, transparent 0 4px, var(--linie) 4px 6px); }
+.lp td.t.ohne { background: #fdf6e7; }
+.lp tr.paket td { background: var(--knopf); height: auto; padding: 6px 10px; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--leise); position: static; }
+.lp tr.paket td .pm, .lp tr.wahl td .pm { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 8px; }
+.lp tr.wahl td { height: auto; padding: 6px 10px 4px; font-size: .78rem; color: var(--blau); font-weight: 700; border-bottom: 1px dashed var(--linie-stark); }
+.lp tr.blass td.auf { color: var(--leise); }
+.lp tr.blass td.auf .kz { color: var(--leise); }
+.lp tr.nw td.auf { font-weight: 600; }
+.alink { color: inherit; text-decoration: underline; text-decoration-color: var(--blau-mittel); text-underline-offset: 3px; }
+.alink::after { content: " ↗"; font-size: .75em; color: var(--blau); }
+.bal { position: absolute; left: 0; right: 0; top: 11px; height: 11px; background: var(--b); pointer-events: none; }
+.bal.a { left: 5px; border-radius: 6px 0 0 6px; } .bal.e { right: 5px; border-radius: 0 6px 6px 0; } .bal.a.e { border-radius: 6px; }
+.ist { position: absolute; left: 8px; right: 12px; bottom: 4px; height: 3px; border-radius: 2px; background: var(--text); pointer-events: none; }
+.frist { position: absolute; right: 2px; top: 2px; background: var(--rot); color: #fff; font-family: var(--mono); font-size: .56rem; font-weight: 700;
+  line-height: 1; padding: 2px 3px; border-radius: 3px; pointer-events: none; }
+.ak { position: absolute; right: 3px; bottom: 2px; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; }
+.ampel { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+.a-g { background: var(--gruen); } .a-y { background: var(--gelb); } .a-r { background: var(--rot); } .a-0 { border: 1.5px dashed var(--linie-stark); }
+.sc { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 8px; font-size: .7rem; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+.sc.offen { border: 1px dashed var(--linie-stark); color: var(--leise); }
+.sc.geplant { background: var(--blau-hell); color: var(--blau); }
+.sc.arbeit { background: var(--b); color: #fff; }
+.sc.spaet { background: var(--rot); color: #fff; }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .76rem; color: var(--leise); align-items: center; }
+.legende span { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.m-bal { width: 18px; height: 8px; border-radius: 4px; background: var(--b); display: inline-block; }
+.m-ist { width: 14px; height: 3px; border-radius: 2px; background: var(--text); display: inline-block; }
+.m-aus { width: 14px; height: 12px; display: inline-block; border: 1px solid var(--linie); background: repeating-linear-gradient(135deg, transparent 0 3px, var(--linie-stark) 3px 5px); }
+.m-ohne { width: 14px; height: 12px; display: inline-block; border: 1px solid var(--gelb); background: #fdf6e7; }
+/* Klassenmatrix */
+table.mx { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .85rem; }
+.mx th { font-size: .64rem; text-transform: uppercase; letter-spacing: .07em; color: var(--leise); font-weight: 700; padding: 7px 6px 5px; text-align: center;
+  border-bottom: 1px solid var(--linie); white-space: nowrap; }
+.mx th.links { text-align: left; padding-left: 10px; }
+.mx th .kz { display: block; font-family: var(--mono); color: var(--blau); font-size: .74rem; letter-spacing: 0; }
+.mx td { border-bottom: 1px solid var(--linie); padding: 5px 6px; text-align: center; vertical-align: middle; white-space: nowrap; }
+.mx td.name { text-align: left; padding-left: 10px; font-weight: 600; }
+.mx td.hin { text-align: left; font-size: .76rem; color: var(--leise); }
+.mx td.hin.w { color: var(--rot); font-weight: 600; }
+.mz { display: inline-grid; place-items: center; min-width: 32px; height: 23px; padding: 0 5px; border-radius: 6px; font-family: var(--mono); font-size: .7rem; font-weight: 700; }
+.mz.offen { color: var(--leise); border: 1px dashed var(--linie-stark); }
+.mz.geplant { border: 1.5px solid var(--b); color: var(--blau); }
+.mz.arbeit { background: var(--b); color: #fff; }
+.mz.fehlt { border: 1.5px dashed var(--rot); color: var(--rot); }
+.mz.ueber { box-shadow: 0 0 0 2px var(--rot); }
+/* Overlays der Schueler */
+.ampel-wahl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ampel-wahl button { display: grid; justify-items: center; gap: 4px; padding: 8px 4px; white-space: normal; font-size: .76rem; line-height: 1.2; text-align: center; min-height: 0; }
+.ampel-wahl button.an { border-color: var(--blau); box-shadow: inset 0 0 0 1.5px var(--blau); background: var(--blau-hell); color: var(--text); }
+.ampel-wahl .ampel { width: 16px; height: 16px; }
+.abschluss-zeile { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--linie); }
+.skala { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.skala button { display: grid; justify-items: center; gap: 2px; padding: 5px 2px 4px; white-space: normal; font-size: .64rem; color: var(--leise); line-height: 1.2;
+  min-height: 0; font-weight: 600; }
+.skala button b { font-size: 1.25rem; color: var(--text); line-height: 1.1; }
+.skala button.an { border-color: var(--blau); box-shadow: inset 0 0 0 1.5px var(--blau); background: var(--blau-hell); color: var(--blau); }
+.ka { border: 1px solid var(--linie); border-radius: 10px 4px 4px 4px; padding: 9px 10px; background: var(--karte); display: grid; gap: 7px; }
+.liste-klein { display: grid; gap: 4px; font-size: .88rem; }
+.liste-klein div { display: flex; gap: 8px; }
+.liste-klein .dat { font-family: var(--mono); font-size: .76rem; color: var(--leise); min-width: 74px; }
 .qr-bild { width: 222px; height: 222px; display: block; background: #fff; border: 1px solid var(--linie); border-radius: 6px; }
 @media (max-width: 760px) {
   .rahmen { grid-template-columns: 1fr; }

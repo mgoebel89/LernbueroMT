@@ -433,6 +433,12 @@ def _frist(con, klasse_id, eigen, *ersatz):
 
 def holen(con, konto, pid):
     p, rolle = pruefen(con, pid, konto)
+    return struktur(con, p, rolle)
+
+
+def struktur(con, p, rolle=None):
+    """Das ganze Paket mit wirksamen Fristen, ohne Rechtepruefung (fuer holen() und den Lernplan der Schueler)."""
+    pid = p["id"]
     kid = p["klasse_id"]
     gruppen = {g["id"]: g for g in con.execute("SELECT * FROM wahlgruppe WHERE paket_id = ? AND aktiv = 1", (pid,))}
     kann_links = {}

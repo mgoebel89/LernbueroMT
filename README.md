@@ -14,7 +14,7 @@ werden daraus berechnet. Inhalte, Abgaben und Tests bleiben in Moodle.
 |---|---|---|
 | A | Grundgerüst: Installation, Lehrkraft-Konten, HTTPS für den Lehrerbereich, HTTP für die Schülerseiten, Firewall, Update und Sicherung aus dem Lehrerbereich; Klassen mit Team und Einsicht; Moodle-Teilnehmerliste mit Zuordnungstabelle; Zugangscodes, QR-Codes und QR-Karten als PDF; Schülerseite mit der Symbol-Leiste | gebaut (0.1.1) |
 | B | Unterrichtstage als Regeln (Wochentag, jede/gerade/ungerade KW), Ferien aus dem Schulkalender-Abo oder von Hand, „fällt aus“ und „findet statt, ohne Sie“; Paket-Editor mit Pflichtaufgaben, Wahlgruppen, Zusatzaufgaben, Kann-Liste, Gelingensnachweis, Fristen (Aufgabe vor Gruppe vor Paket, rutschen auf den nächsten Unterrichtstag), Freigabe ab einem Unterrichtstag, Kopieren in eine Klasse oder als eigene Vorlage | gebaut (0.2.0) |
-| C | Lernplan der Schüler: Raster, Wahl, Heute, Tagesabschluss mit Ampel je Aufgabe, Kann-Liste vorher, Klassenmatrix | geplant |
+| C | Lernplan der Schüler: Raster über die Unterrichtstage (antippen oder Balken ziehen, vergangene Tage gesperrt), Moodle-Link am Aufgabennamen, Wahl und Abwahl in Wahlgruppen, Frage bei Ausfall (verschieben zählt nicht als eigene Verschiebung), Heute mit „Tag abschließen“ (bearbeitet + Ampel je Aufgabe, Erinnerung nach einer Woche), Kann-Liste vorher; Lehrkraft: Klassenmatrix mit Ampel und Hinweisen, Schülerseite mit Plan und Entscheidungen | gebaut (0.3.0) |
 | D | Melden, Rückmeldung mit Diktat (Whisper im Container), Empfehlungen, Hilfe-Knopf, Sprechzeiten | geplant |
 | E | Gelingensnachweise: Bereitmeldung, Prüfungszeiten, Ergebnisse | geplant |
 | F | Kalender (Dienstkalender, Halbjahr), Verlauf, Lernstand-Bericht und Klassenübersicht als PDF, Archiv | geplant |

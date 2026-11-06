@@ -208,6 +208,39 @@ MIGRATIONEN = [
         pos INTEGER NOT NULL,
         aktiv INTEGER NOT NULL DEFAULT 1)
     """,
+    # 3: Lernplan der Schueler (Stufe C). Aktueller Stand in plan/wahl/ist/abschluss/kann_einschaetzung, jede Aenderung
+    # zusaetzlich als Ereignis (Verlauf und Stand je Unterrichtstag in Stufe F).
+    """
+    CREATE TABLE plan (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        datum TEXT NOT NULL,
+        PRIMARY KEY (schueler_id, aufgabe_id, datum));
+    CREATE TABLE wahl (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        zeit TEXT NOT NULL,
+        PRIMARY KEY (schueler_id, aufgabe_id));
+    CREATE TABLE ist (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        datum TEXT NOT NULL,
+        ampel TEXT NOT NULL CHECK (ampel IN ('g', 'y', 'r')),
+        PRIMARY KEY (schueler_id, aufgabe_id, datum));
+    CREATE TABLE abschluss (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        datum TEXT NOT NULL,
+        zeit TEXT NOT NULL,
+        PRIMARY KEY (schueler_id, datum));
+    CREATE TABLE kann_einschaetzung (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        kann_id INTEGER NOT NULL REFERENCES kann_aussage(id) ON DELETE CASCADE,
+        art TEXT NOT NULL CHECK (art IN ('vorher', 'nachher', 'lehrkraft')),
+        stufe INTEGER NOT NULL CHECK (stufe BETWEEN 1 AND 4),
+        zeit TEXT NOT NULL,
+        wer TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (schueler_id, kann_id, art))
+    """,
 ]
 
 
