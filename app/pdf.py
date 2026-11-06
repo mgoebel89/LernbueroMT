@@ -58,11 +58,16 @@ class Seite:
         self.teile.append(b"%.3f %.3f %.3f RG %.2f w " % (farbe + (staerke,)) + strich + b"%.3f %.3f %.3f %.3f re S" % (x, y, b, h))
 
     def qr(self, x, y, kante, text):
-        """QR-Code mit Ruhezone; (x, y) = linke untere Ecke, kante = Breite inklusive Ruhezone."""
+        """QR-Code mit Ruhezone; (x, y) = linke untere Ecke, kante = Breite inklusive Ruhezone.
+        Jeder Lauf dunkler Module wird ringsum um 6 % eines Moduls groesser gezeichnet: Sonst lassen PDF-Betrachter
+        beim Glaetten haarfeine helle Fugen zwischen benachbarten Rechtecken stehen, der Code wirkt grau und die
+        Handykamera liest ihn nicht (so im ersten Container-Test passiert)."""
         m = qr.matrix(text)
         n = len(m) + 8
         modul = kante / n
+        e = modul * 0.06
         self.rechteck(x, y, kante, kante, (1, 1, 1))
+        teile = []   # alle Module in EINEM Pfad, einmal gefuellt: dann glaettet der Betrachter keine Kanten dazwischen
         for zy, zeile in enumerate(m):
             zx = 0
             while zx < len(zeile):   # Laeufe dunkler Module als ein Rechteck (kleinere Datei)
@@ -70,9 +75,11 @@ class Seite:
                     start = zx
                     while zx < len(zeile) and zeile[zx]:
                         zx += 1
-                    self.rechteck(x + (start + 4) * modul, y + kante - (zy + 5) * modul, (zx - start) * modul + 0.02, modul + 0.02)
+                    teile.append(b"%.3f %.3f %.3f %.3f re" % (x + (start + 4) * modul - e, y + kante - (zy + 5) * modul - e,
+                                                             (zx - start) * modul + 2 * e, modul + 2 * e))
                 else:
                     zx += 1
+        self.teile.append(b"0 0 0 rg " + b" ".join(teile) + b" f")
 
     def inhalt(self):
         return b"\n".join(self.teile)
