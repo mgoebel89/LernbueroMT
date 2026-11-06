@@ -1,0 +1,1659 @@
+<title>Lernbüro MT Konzept</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: DRS-Kopfzeile mit blauer Linie, eine Lesespalte, Karten mit EINER großen Ecke oben links, Fenster-Voransichten in Geräterahmen (wie TrackingDRS) */
+:root {
+  --blau:#00639C; --blau-dunkel:#004d7a; --blau-hell:#e8f2f9; --blau-mittel:#7fb1cf;
+  --gruen:#9fb400; --gelb:#F8B442; --rot:#D4005E; --lila:#7B4FA0;
+  --bg:#f4f6f8; --karte:#ffffff; --text:#1d2433; --leise:#5d6779; --linie:#e4e7ec; --linie-stark:#cfd4dc; --knopf:#f2f4f7;
+  --b:#5aa9d6; --ist:#1d2433; --auf-farbe:#ffffff; --bezel:#1f2630; --dimm:rgba(16,24,40,.38);
+  --schatten:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --f-titel:'Barlow Semi Condensed','DIN Pro','Segoe UI',Calibri,Arial,sans-serif;
+  --f-text:'Barlow','DIN Pro','Segoe UI',Calibri,system-ui,Arial,sans-serif;
+  --f-mono:'JetBrains Mono','Cascadia Mono',Consolas,monospace;
+  --ecke:18px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --blau:#4aa3dc; --blau-dunkel:#7fc0ea; --blau-hell:#13283a; --blau-mittel:#2f5f80;
+  --gruen:#b8cf1a; --gelb:#f6bb55; --rot:#ff4f97; --lila:#b48be0;
+  --bg:#0f1419; --karte:#171e26; --text:#e6eaf0; --leise:#9aa5b5; --linie:#26303b; --linie-stark:#34404d; --knopf:#1f2832;
+  --b:#2f7fb0; --ist:#e6eaf0; --auf-farbe:#0f1419; --bezel:#05080b; --dimm:rgba(0,0,0,.55);
+  --schatten:0 1px 2px rgba(0,0,0,.4); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --blau:#4aa3dc; --blau-dunkel:#7fc0ea; --blau-hell:#13283a; --blau-mittel:#2f5f80;
+  --gruen:#b8cf1a; --gelb:#f6bb55; --rot:#ff4f97; --lila:#b48be0;
+  --bg:#0f1419; --karte:#171e26; --text:#e6eaf0; --leise:#9aa5b5; --linie:#26303b; --linie-stark:#34404d; --knopf:#1f2832;
+  --b:#2f7fb0; --ist:#e6eaf0; --auf-farbe:#0f1419; --bezel:#05080b; --dimm:rgba(0,0,0,.55);
+  --schatten:0 1px 2px rgba(0,0,0,.4); color-scheme:dark; }
+
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { background:var(--bg); color:var(--text); font-family:var(--f-text); font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+header.kopf { background:var(--karte); border-bottom:2px solid var(--blau); box-shadow:var(--schatten);
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); padding-block:14px; }
+.kopf-innen { max-width:1040px; margin:0 auto; display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline; justify-content:space-between; }
+.marke { font-family:var(--f-titel); font-weight:700; font-size:1.5rem; color:var(--blau); letter-spacing:-.01em; }
+.kopf-meta { color:var(--leise); font-size:.9rem; display:flex; gap:6px 14px; flex-wrap:wrap; align-items:center; }
+.status { display:inline-block; padding:1px 10px; border-radius:999px; background:var(--gelb); color:#1d2433; font-weight:600; font-size:.82rem; }
+main { max-width:1040px; margin:0 auto; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); padding-block:28px 64px; display:grid; gap:40px; }
+section { display:grid; gap:14px; min-width:0; }
+h1 { font-family:var(--f-titel); font-size:clamp(1.9rem, 4vw, 2.6rem); line-height:1.1; margin:0; text-wrap:balance; }
+h2 { font-family:var(--f-titel); font-size:1.55rem; margin:0; line-height:1.2; display:flex; gap:10px; align-items:baseline; text-wrap:balance; }
+h2 .nr { font-family:var(--f-mono); font-size:.8rem; color:var(--blau); font-weight:600; letter-spacing:.04em; }
+h3 { font-family:var(--f-titel); font-size:1.15rem; margin:0; }
+p { margin:0; max-width:68ch; }
+.leise { color:var(--leise); }
+.karte { background:var(--karte); border:1px solid var(--linie); border-radius:var(--ecke) 6px 6px 6px; padding:18px 20px; min-width:0; display:grid; gap:8px; align-content:start; }
+.leitidee { background:var(--blau); color:#fff; border-radius:var(--ecke) 6px 6px 6px; padding:22px 24px; display:grid; gap:8px; }
+.leitidee p { max-width:none; font-size:1.12rem; }
+.leitidee .klein { font-size:.92rem; opacity:.88; }
+.neu-box { border:2px solid var(--gruen); background:var(--karte); border-radius:var(--ecke) 6px 6px 6px; padding:16px 20px; display:grid; gap:10px; }
+.neu-box h3 { display:flex; gap:8px; align-items:center; }
+.neu-box .pille { font-family:var(--f-text); font-size:.72rem; font-weight:700; background:var(--gruen); color:#1d2433; border-radius:999px; padding:1px 9px; }
+.neu-raster { display:grid; gap:6px 22px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); margin:0; padding-left:1.15em; font-size:.93rem; }
+.neu-raster li::marker { color:var(--gruen); }
+.raster { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); }
+.raster-2 { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
+ul.liste { margin:0; padding-left:1.15em; display:grid; gap:4px; }
+ul.liste li::marker { color:var(--blau); }
+.etikett { font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:var(--leise); }
+code, .mono { font-family:var(--f-mono); font-size:.86em; }
+code { background:var(--knopf); border:1px solid var(--linie); border-radius:4px; padding:0 4px; overflow-wrap:anywhere; }
+.tabelle-rahmen { overflow-x:auto; border:1px solid var(--linie); border-radius:var(--ecke) 6px 6px 6px; background:var(--karte); }
+table.t-doc { border-collapse:collapse; width:100%; font-size:.93rem; }
+.t-doc th, .t-doc td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--linie); vertical-align:top; }
+.t-doc th { font-size:.74rem; text-transform:uppercase; letter-spacing:.07em; color:var(--leise); background:var(--knopf); white-space:nowrap; }
+.t-doc tr:last-child td { border-bottom:none; }
+.t-doc td:first-child { white-space:nowrap; font-weight:600; }
+.t-doc tr.neu td:first-child::after { content:"neu"; margin-left:6px; font-size:.62rem; font-weight:700; background:var(--gruen); color:#1d2433; border-radius:4px; padding:0 5px; vertical-align:2px; }
+
+/* Aufbau-Baum */
+.aufbau { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); }
+.ebene { background:var(--karte); border:1px solid var(--linie); border-radius:12px 5px 5px 5px; padding:12px 14px; display:grid; gap:4px; font-size:.9rem; min-width:0; align-content:start; }
+.ebene b { font-family:var(--f-titel); font-size:1.05rem; color:var(--blau); }
+.stand-reihe { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:.85rem; }
+.stand-reihe .pfeil { color:var(--leise); }
+
+/* Ablauf */
+.ablauf { display:grid; gap:0; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); }
+.schritt { padding:14px 14px 14px 16px; border-left:3px solid var(--blau); background:var(--karte); border-top:1px solid var(--linie); border-bottom:1px solid var(--linie); border-right:1px solid var(--linie); min-width:0; }
+.schritt b { display:block; font-family:var(--f-titel); font-size:1.02rem; }
+.schritt span { font-size:.88rem; color:var(--leise); }
+.schritt .wer-t { font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:var(--blau); }
+.schritt.lk { border-left-color:var(--text); }
+.schritt.lk .wer-t { color:var(--text); }
+.schleife { border:2px dashed var(--blau-mittel); border-radius:var(--ecke) 6px 6px 6px; padding:12px; display:grid; gap:8px; }
+.schleife > .etikett { color:var(--blau); }
+
+/* Geräte-Rahmen */
+.skizze { display:grid; gap:8px; min-width:0; }
+.skizze-titel { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
+.rahmen { overflow-x:auto; padding:2px 2px 6px; }
+.geraete-reihe { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+.geraet { background:var(--bg); border:1px solid var(--linie-stark); border-radius:14px; padding:10px; box-shadow:var(--schatten); }
+.geraet.pc { min-width:1080px; }
+.geraet.mittel { min-width:860px; }
+.geraet.handy { width:340px; border-radius:26px; padding:12px 10px; flex:none; }
+.app-kopf { display:flex; align-items:center; gap:10px; background:var(--karte); border-bottom:2px solid var(--blau); padding:8px 12px; border-radius:8px 8px 0 0; font-size:.86rem; }
+.app-kopf b { color:var(--blau); font-family:var(--f-titel); font-size:1rem; white-space:nowrap; }
+.app-kopf .wer { color:var(--leise); white-space:nowrap; }
+.app-kopf .rechts { margin-left:auto; display:flex; gap:6px; align-items:center; }
+.reiter { display:flex; gap:4px; font-size:.78rem; flex-wrap:nowrap; }
+.reiter span { padding:4px 9px; border-radius:6px; color:var(--leise); font-weight:600; white-space:nowrap; display:inline-flex; gap:5px; align-items:center; }
+.reiter span.an { background:var(--blau-hell); color:var(--blau); }
+.zahl { font-style:normal; background:var(--rot); color:#fff; border-radius:999px; padding:0 6px; font-size:.66rem; font-weight:700; }
+.k { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--linie-stark); background:var(--karte); border-radius:7px; padding:3px 10px; font-size:.78rem; font-weight:600; color:var(--text); white-space:nowrap; }
+.k.haupt { background:var(--blau); border-color:var(--blau); color:#fff; }
+.k.warn { border-color:var(--rot); color:var(--rot); }
+.k.gross { padding:8px 14px; font-size:.9rem; border-radius:10px; }
+.k.aus { opacity:.45; }
+.app-flaeche { background:var(--bg); padding:10px; display:grid; gap:8px; border-radius:0 0 8px 8px; position:relative; }
+.pc-body { display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:10px; padding:10px; background:var(--bg); border-radius:0 0 8px 8px; position:relative; }
+.pc-body.links { grid-template-columns:280px minmax(0,1fr); }
+.spalte { display:grid; gap:8px; align-content:start; min-width:0; }
+.panel { background:var(--karte); border:1px solid var(--linie); border-radius:12px 5px 5px 5px; padding:11px 12px; display:grid; gap:8px; align-content:start; font-size:.82rem; min-width:0; }
+.panel h4 { margin:0; font-family:var(--f-titel); font-size:1rem; display:flex; gap:6px; align-items:center; }
+.panel .etikett { font-size:.62rem; }
+.leiste { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:.8rem; min-height:32px; }
+.leiste .rechts { margin-left:auto; display:flex; gap:6px; align-items:center; }
+.auswahl { display:inline-flex; gap:6px; align-items:center; border:1px solid var(--linie-stark); background:var(--karte); border-radius:7px; padding:3px 9px; font-size:.78rem; font-weight:600; white-space:nowrap; }
+.auswahl::after { content:"▾"; color:var(--leise); font-size:.7rem; }
+.banner { background:var(--blau-hell); border:1px solid var(--blau-mittel); color:var(--text); border-radius:10px 4px 4px 4px; padding:7px 10px; font-size:.8rem; }
+.banner.w { background:transparent; border-color:var(--rot); }
+.banner.g { background:color-mix(in srgb, var(--gelb) 16%, var(--karte)); border-color:var(--gelb); }
+.i { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.i.gr { width:22px; height:22px; }
+
+/* Legende */
+.legende { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.74rem; color:var(--leise); align-items:center; }
+.legende span { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+.m-bal { width:18px; height:8px; border-radius:4px; background:var(--b); display:inline-block; }
+.m-ist { width:14px; height:3px; border-radius:2px; background:var(--ist); display:inline-block; }
+.m-geist { width:14px; height:3px; border-radius:2px; background:var(--leise); opacity:.55; display:inline-block; }
+.m-aus { width:14px; height:12px; display:inline-block; border:1px solid var(--linie); background:repeating-linear-gradient(135deg, transparent 0 3px, var(--linie-stark) 3px 5px); }
+.m-ohne { width:14px; height:12px; display:inline-block; border:1px solid var(--gelb); background:color-mix(in srgb, var(--gelb) 22%, transparent); }
+
+/* Lernplan-Raster */
+.r-scroll { overflow-x:auto; background:var(--karte); border:1px solid var(--linie); border-radius:12px 5px 5px 5px; }
+table.lp { border-collapse:separate; border-spacing:0; width:100%; font-size:.8rem; }
+.lp th { font-family:var(--f-mono); font-size:.62rem; color:var(--leise); font-weight:600; text-align:center; padding:6px 0 4px; line-height:1.25; border-bottom:1px solid var(--linie); }
+.lp th.links { text-align:left; padding-left:10px; font-family:var(--f-text); text-transform:uppercase; letter-spacing:.07em; font-size:.6rem; }
+.lp th.heute { color:var(--blau); }
+.lp th.aus { color:var(--leise); opacity:.7; }
+.lp th.ohne { color:#9a6400; }
+.lp td { padding:0; border-bottom:1px solid var(--linie); vertical-align:middle; height:31px; }
+.lp td.auf { padding:0 10px; white-space:nowrap; min-width:230px; max-width:270px; overflow:hidden; text-overflow:ellipsis; }
+.lp td.auf .kz { font-family:var(--f-mono); font-weight:600; color:var(--blau); margin-right:7px; font-size:.74rem; }
+.lp td.auf .art { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--leise); margin-left:6px; font-weight:700; }
+.lp td.auf .art.verb { color:var(--rot); }
+.alink { text-decoration:underline; text-decoration-color:var(--blau-mittel); text-underline-offset:3px; text-decoration-thickness:1px; cursor:pointer; }
+.alink::after { content:" ↗"; font-size:.72em; color:var(--blau); text-decoration:none; display:inline-block; margin-left:2px; }
+.lp td.st { padding:0 8px; white-space:nowrap; min-width:126px; }
+.lp td.st .ampel { width:10px; height:10px; margin-left:6px; vertical-align:-1px; }
+.lp td.t { width:48px; min-width:48px; position:relative; border-left:1px solid var(--linie); }
+.lp td.t.heute { background:var(--blau-hell); }
+.lp td.t.aus { background:repeating-linear-gradient(135deg, transparent 0 4px, var(--linie) 4px 6px); }
+.lp td.t.ohne { background:color-mix(in srgb, var(--gelb) 13%, transparent); }
+.lp tr.paket td { background:var(--knopf); height:auto; padding:6px 10px; font-size:.66rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--leise); }
+.lp tr.paket td .pm { text-transform:none; letter-spacing:0; font-weight:500; margin-left:8px; }
+.lp tr.wahl td, .lp tr.emp td { height:auto; padding:6px 10px 4px; font-size:.74rem; color:var(--blau); font-weight:700; border-bottom:1px dashed var(--linie-stark); }
+.lp tr.emp td { color:#7a4f00; background:color-mix(in srgb, var(--gelb) 10%, transparent); }
+:root[data-theme="dark"] .lp tr.emp td { color:var(--gelb); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lp tr.emp td { color:var(--gelb); } }
+.lp tr.wahl td .pm, .lp tr.emp td .pm { color:var(--leise); font-weight:500; margin-left:8px; }
+.lp tr.dim td.auf { color:var(--leise); }
+.lp tr.dim td.auf .kz { color:var(--leise); }
+.lp tr.sel td.auf { color:var(--blau); font-weight:600; box-shadow:inset 3px 0 0 var(--blau); }
+.lp tr.nw td.auf { font-weight:600; }
+.lp tr.nw td.auf .kz { color:var(--text); }
+.bal { position:absolute; left:0; right:0; top:10px; height:10px; background:var(--b); }
+.bal.a { left:5px; border-radius:5px 0 0 5px; } .bal.e { right:5px; border-radius:0 5px 5px 0; } .bal.a.e { border-radius:5px; }
+.ist { position:absolute; left:8px; right:12px; bottom:4px; height:3px; border-radius:2px; background:var(--ist); }
+.geist { position:absolute; left:0; right:0; top:4px; height:3px; background:var(--leise); opacity:.55; }
+.geist.a { left:5px; border-radius:2px 0 0 2px; } .geist.e { right:5px; border-radius:0 2px 2px 0; } .geist.a.e { border-radius:2px; }
+.frist { position:absolute; right:2px; top:2px; background:var(--rot); color:#fff; font-family:var(--f-mono); font-size:.54rem; font-weight:700; line-height:1; padding:2px 3px; border-radius:3px; }
+.ak { position:absolute; right:3px; bottom:2px; width:8px; height:8px; border-radius:50%; }
+.lp tr.dim .bal, .lp tr.dim .frist { opacity:.35; }
+.ampel { width:12px; height:12px; border-radius:50%; display:inline-block; flex:none; }
+.a-g { background:var(--gruen); } .a-y { background:var(--gelb); } .a-r { background:var(--rot); } .a-0 { border:1.5px dashed var(--linie-stark); }
+
+/* Status-Chips */
+.sc { display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:1px 8px; font-size:.68rem; font-weight:700; border:1px solid transparent; white-space:nowrap; }
+.sc.offen { border:1px dashed var(--linie-stark); color:var(--leise); }
+.sc.geplant { background:var(--blau-hell); color:var(--blau); }
+.sc.arbeit { background:var(--b); color:var(--auf-farbe); }
+.sc.gemeldet { background:var(--gelb); color:#1d2433; }
+.sc.ok { background:var(--gruen); color:#1d2433; }
+.sc.ueber { border-color:var(--rot); color:var(--rot); }
+.sc.spaet { background:var(--rot); color:#fff; }
+.knopf-klein { font-size:.68rem; font-weight:700; color:var(--blau); border:1px solid var(--blau-mittel); border-radius:6px; padding:1px 7px; background:var(--karte); white-space:nowrap; }
+.d-tag { font-size:.58rem; font-weight:700; padding:1px 5px; border-radius:4px; margin-left:4px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+.d-tag.neu { background:var(--gruen); color:#1d2433; }
+.d-tag.weg { background:var(--knopf); color:var(--leise); box-shadow:inset 0 0 0 1px var(--linie-stark); }
+.d-tag.versch { background:var(--gelb); color:#1d2433; }
+.d-tag.aus { background:transparent; color:var(--leise); box-shadow:inset 0 0 0 1px var(--leise); }
+.d-tag.emp { background:color-mix(in srgb, var(--gelb) 30%, transparent); color:var(--text); }
+
+/* Klassenmatrix */
+table.mx { border-collapse:separate; border-spacing:0; width:100%; font-size:.8rem; }
+.mx th { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--leise); font-weight:700; padding:7px 6px 5px; text-align:center; border-bottom:1px solid var(--linie); white-space:nowrap; }
+.mx th.links { text-align:left; padding-left:10px; }
+.mx th .kz { display:block; font-family:var(--f-mono); color:var(--blau); font-size:.7rem; letter-spacing:0; }
+.mx td { border-bottom:1px solid var(--linie); padding:5px 6px; text-align:center; vertical-align:middle; white-space:nowrap; }
+.mx td.name { text-align:left; padding-left:10px; font-weight:600; }
+.mx td.hin { text-align:left; font-size:.72rem; color:var(--leise); }
+.mx td.hin.w { color:var(--rot); font-weight:600; }
+.mx tr:last-child td { border-bottom:none; }
+.mz { display:inline-grid; place-items:center; min-width:30px; height:22px; padding:0 4px; border-radius:6px; font-family:var(--f-mono); font-size:.68rem; font-weight:700; }
+.mz.off { color:var(--leise); border:1px dashed var(--linie-stark); }
+.mz.gepl { border:1.5px solid var(--b); color:var(--blau); }
+.mz.arb { background:var(--b); color:var(--auf-farbe); }
+.mz.gem { background:var(--gelb); color:#1d2433; }
+.mz.ok { background:var(--gruen); color:#1d2433; }
+.mz.ueb { border:1.5px solid var(--rot); color:var(--rot); }
+.mz.bereit { background:var(--blau); color:#fff; }
+.mz.erg { background:var(--knopf); color:var(--text); border:1px solid var(--linie-stark); }
+.mz.fehlt { border:1.5px dashed var(--rot); color:var(--rot); }
+.hilfe-marke { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--rot); color:#fff; font-weight:700; font-size:.72rem; }
+.zeile-liste { display:grid; gap:6px; }
+.zl { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:7px 8px; border:1px solid var(--linie); border-radius:9px 4px 4px 4px; background:var(--bg); }
+.zl .nr { font-family:var(--f-mono); font-weight:700; color:var(--rot); font-size:.78rem; }
+.zl .uhr { font-family:var(--f-mono); font-weight:700; color:var(--blau); font-size:.74rem; }
+.zl small { display:block; color:var(--leise); font-size:.7rem; }
+
+/* Handy */
+.h-flaeche { background:var(--bg); padding:10px; display:grid; gap:9px; border-radius:0 0 14px 14px; font-size:.84rem; position:relative; align-content:start; }
+.h-karte { background:var(--karte); border:1px solid var(--linie); border-radius:13px 5px 5px 5px; padding:10px 12px; display:grid; gap:7px; }
+.h-karte .etikett { font-size:.62rem; }
+.h-auf { display:flex; gap:8px; align-items:center; }
+.h-auf .kz { font-family:var(--f-mono); color:var(--blau); font-weight:700; font-size:.76rem; }
+.h-auf .rechts { margin-left:auto; }
+.hilfe-knopf { display:flex; align-items:center; justify-content:center; gap:10px; padding:14px; border-radius:14px 6px 6px 6px; border:2px solid var(--rot); color:var(--rot); background:var(--karte); font-family:var(--f-titel); font-weight:700; font-size:1.15rem; }
+.hilfe-knopf small { font-family:var(--f-text); font-weight:600; font-size:.74rem; display:block; color:var(--leise); }
+.ampel-wahl { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.ampel-wahl span { display:grid; justify-items:center; gap:3px; padding:7px 4px; border:1px solid var(--linie-stark); border-radius:9px; font-size:.68rem; font-weight:600; background:var(--karte); text-align:center; line-height:1.25; }
+.ampel-wahl span.an { border-color:var(--blau); box-shadow:inset 0 0 0 1px var(--blau); }
+.ampel-wahl .ampel { width:16px; height:16px; }
+.abschluss-zeile { display:grid; gap:6px; padding:8px 0 2px; border-top:1px solid var(--linie); }
+.abschluss-zeile:first-of-type { border-top:none; padding-top:0; }
+.haken { display:flex; gap:7px; align-items:center; font-size:.8rem; }
+.haken i { width:15px; height:15px; border-radius:4px; border:1.5px solid var(--linie-stark); display:inline-grid; place-items:center; font-style:normal; font-size:.7rem; font-weight:700; flex:none; }
+.haken i.an { background:var(--blau); border-color:var(--blau); color:#fff; }
+.h-fuss { display:grid; grid-template-columns:repeat(5,1fr); gap:2px; background:var(--karte); border-top:1px solid var(--linie); border-radius:0 0 16px 16px; padding:6px 4px 4px; }
+.h-fuss span { display:grid; justify-items:center; gap:1px; font-size:.58rem; font-weight:600; color:var(--leise); white-space:nowrap; }
+.h-fuss span.an { color:var(--blau); }
+.h-fuss .fi { display:grid; justify-items:center; gap:3px; font-size:.58rem; font-weight:600; color:var(--leise); white-space:nowrap; }
+.h-fuss .fi.an { color:var(--text); font-weight:700; }
+.h-fuss .fi.an .ik { box-shadow:0 0 0 2px var(--karte), 0 0 0 3.5px var(--text); }
+.ik { width:24px; height:24px; border-radius:8px; display:inline-grid; place-items:center; color:#fff; flex:none; position:relative; }
+.ik .i { width:14px; height:14px; }
+.ik .zahl { position:absolute; top:-6px; right:-9px; }
+.ik.plan { background:var(--blau); } .ik.heute { background:var(--gelb); color:#1d2433; } .ik.kann { background:var(--gruen); color:#1d2433; }
+.ik.rueck { background:var(--blau-mittel); color:#fff; } .ik.gn { background:var(--lila); color:#fff; }
+.h-fuss .ik { width:30px; height:30px; border-radius:10px; }
+.h-fuss .ik .i { width:17px; height:17px; }
+.reiter.bunt { gap:6px; }
+.reiter.bunt span { padding:3px 10px 3px 4px; gap:7px; color:var(--text); }
+.reiter.bunt span.an { background:var(--blau-hell); color:var(--text); box-shadow:inset 0 -2px 0 var(--blau); }
+.pc-rahmen { display:grid; grid-template-columns:92px minmax(0,1fr); position:relative; background:var(--bg); border-radius:0 0 8px 8px; }
+.schiene { background:var(--karte); border-right:1px solid var(--linie); display:flex; flex-direction:column; gap:4px; padding:10px 6px; border-radius:0 0 0 8px; }
+.schiene .fi { display:grid; justify-items:center; gap:5px; padding:9px 2px 8px; border-radius:12px; font-size:.68rem; font-weight:600; color:var(--leise); text-align:center; line-height:1.2; }
+.schiene .fi.an { background:var(--blau-hell); color:var(--text); font-weight:700; }
+.schiene .ik { width:42px; height:42px; border-radius:13px; }
+.schiene .ik .i { width:22px; height:22px; }
+.schiene .fi.an .ik { box-shadow:0 0 0 2px var(--karte), 0 0 0 4px var(--text); }
+.schiene .hilfe-s { margin-top:auto; display:grid; justify-items:center; gap:5px; padding:9px 2px; border-radius:12px; border:2px solid var(--rot); color:var(--rot); font-size:.68rem; font-weight:700; text-align:center; }
+.schiene .hilfe-s .i { width:24px; height:24px; }
+.blatt-titel { font-family:var(--f-titel); font-size:1.08rem; }
+.blatt-knoepfe { display:grid; grid-template-columns:1fr 1.6fr; gap:8px; }
+.blatt-knoepfe .k { justify-content:center; }
+.fb-text { font-size:.82rem; line-height:1.45; background:var(--bg); border-left:3px solid var(--blau); padding:7px 9px; border-radius:0 6px 6px 0; }
+.liste-klein { display:grid; gap:4px; font-size:.78rem; }
+.liste-klein div { display:flex; gap:8px; }
+.liste-klein .dat { font-family:var(--f-mono); font-size:.7rem; color:var(--leise); min-width:68px; }
+.ueberlage { position:absolute; inset:0; background:var(--dimm); border-radius:inherit; display:flex; align-items:flex-end; }
+.blatt { background:var(--karte); width:100%; border-radius:16px 16px 0 0; padding:12px 12px 14px; display:grid; gap:9px; box-shadow:0 -10px 30px -12px rgba(0,0,0,.4); }
+.blatt .griff { width:42px; height:4px; border-radius:2px; background:var(--linie-stark); justify-self:center; }
+.tage-wahl { display:flex; gap:6px; }
+.tage-wahl span { flex:1; text-align:center; border:1px solid var(--linie-stark); border-radius:9px; padding:6px 2px; font-size:.72rem; font-weight:600; line-height:1.25; }
+.tage-wahl span.an { background:var(--blau); border-color:var(--blau); color:#fff; }
+.tage-wahl span.weg { opacity:.45; text-decoration:line-through; }
+.zeiten { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.zeiten span { text-align:center; border:1px solid var(--blau-mittel); color:var(--blau); border-radius:8px; padding:6px 2px; font-family:var(--f-mono); font-size:.74rem; font-weight:600; }
+.zeiten span.an { background:var(--blau); color:#fff; border-color:var(--blau); }
+.zeiten span.weg { opacity:.4; text-decoration:line-through; border-style:dashed; }
+
+/* Kann-Liste */
+.ka { border:1px solid var(--linie); border-radius:10px 4px 4px 4px; padding:8px 9px; background:var(--karte); display:grid; gap:6px; }
+.ka p { font-size:.8rem; line-height:1.35; }
+.ka .bez { display:flex; gap:4px; flex-wrap:wrap; align-items:center; font-size:.64rem; color:var(--leise); }
+.bz { font-family:var(--f-mono); font-size:.64rem; font-weight:700; color:var(--blau); border:1px solid var(--blau-mittel); border-radius:4px; padding:0 4px; }
+.skala { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+.skala span { display:grid; justify-items:center; gap:1px; border:1px solid var(--linie-stark); border-radius:8px; padding:4px 2px 3px; font-size:.58rem; color:var(--leise); background:var(--karte); line-height:1.2; text-align:center; position:relative; }
+.skala span b { font-size:1.15rem; color:var(--text); font-weight:600; line-height:1.1; font-family:var(--f-titel); }
+.skala span.an { border-color:var(--blau); box-shadow:inset 0 0 0 1.5px var(--blau); color:var(--blau); }
+.skala span.vor::after { content:"vorher"; position:absolute; top:-7px; left:50%; transform:translateX(-50%); font-size:.5rem; font-weight:700; letter-spacing:.04em; background:var(--leise); color:var(--karte); border-radius:3px; padding:0 3px; }
+.skala.klein span { padding:2px 1px; }
+.skala.klein span b { font-size:.9rem; }
+.kv { display:grid; grid-template-columns:minmax(0,1fr) 50px 236px; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--linie); font-size:.78rem; }
+.kv:last-child { border-bottom:none; }
+.kv .sch { text-align:center; font-size:1.1rem; line-height:1; }
+.kv .sch small { display:block; font-size:.56rem; color:var(--leise); }
+.kv.diff { background:color-mix(in srgb, var(--gelb) 12%, transparent); border-radius:6px; padding:6px; }
+.fortschritt { height:6px; border-radius:3px; background:var(--knopf); overflow:hidden; }
+.fortschritt i { display:block; height:100%; background:var(--blau); border-radius:3px; }
+
+/* Empfehlungen */
+.emp-zeile { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:6px 8px; border:1px solid var(--gelb); background:color-mix(in srgb, var(--gelb) 10%, var(--karte)); border-radius:9px 4px 4px 4px; font-size:.78rem; }
+.emp-zeile .kz { font-family:var(--f-mono); font-weight:700; color:var(--blau); }
+.emp-zeile small { display:block; color:var(--leise); font-size:.68rem; }
+.schalter { display:inline-flex; border:1px solid var(--linie-stark); border-radius:7px; overflow:hidden; font-size:.66rem; font-weight:700; }
+.schalter span { padding:2px 7px; color:var(--leise); background:var(--karte); white-space:nowrap; }
+.schalter span.an { background:var(--blau); color:#fff; }
+
+/* Modal-Attrappe */
+.dimm { position:absolute; inset:0; background:var(--dimm); border-radius:0 0 8px 8px; display:grid; place-items:center; padding:20px; }
+.modal { background:var(--karte); border-radius:16px 6px 6px 6px; width:min(960px, 100%); box-shadow:0 20px 50px -20px rgba(0,0,0,.5); display:grid; }
+.modal-kopf { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--linie); }
+.modal-kopf b { font-family:var(--f-titel); font-size:1.12rem; }
+.modal-kopf .rechts { margin-left:auto; color:var(--leise); }
+.modal-inhalt { display:grid; grid-template-columns:480px 1fr; gap:16px; padding:14px 16px; font-size:.84rem; }
+.modal-fuss { display:flex; gap:8px; justify-content:flex-end; align-items:center; padding:10px 16px; border-top:1px solid var(--linie); }
+.modal-fuss .leise { margin-right:auto; font-size:.76rem; }
+.diktat { display:flex; gap:12px; align-items:center; padding:10px 12px; border:1px solid var(--linie); border-radius:12px 5px 5px 5px; background:var(--bg); }
+.mic { width:46px; height:46px; border-radius:50%; background:var(--rot); color:#fff; display:grid; place-items:center; flex:none; box-shadow:0 0 0 5px color-mix(in srgb, var(--rot) 22%, transparent); }
+.welle { display:flex; gap:2px; align-items:center; height:30px; flex:1; }
+.welle i { width:3px; border-radius:2px; background:var(--blau-mittel); display:block; }
+.textfeld { border:1px solid var(--linie-stark); border-radius:8px; padding:9px 11px; background:var(--karte); line-height:1.5; min-height:96px; }
+.textfeld mark { background:color-mix(in srgb, var(--gelb) 45%, transparent); color:inherit; border-radius:2px; padding:0 1px; }
+.radio { display:flex; gap:7px; align-items:center; }
+.radio i { width:14px; height:14px; border-radius:50%; border:1.5px solid var(--linie-stark); display:inline-block; flex:none; }
+.radio i.an { border:4px solid var(--blau); }
+.feld { display:grid; gap:3px; font-size:.78rem; }
+.feld > span:first-child { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; font-weight:700; color:var(--leise); }
+.eingabe { border:1px solid var(--linie-stark); border-radius:7px; padding:5px 9px; background:var(--karte); font-size:.82rem; min-height:30px; display:flex; align-items:center; gap:6px; }
+
+/* Paket-Editor */
+table.pe { border-collapse:separate; border-spacing:0; width:100%; font-size:.8rem; }
+.pe th { font-size:.6rem; text-transform:uppercase; letter-spacing:.07em; color:var(--leise); font-weight:700; text-align:left; padding:7px 8px 5px; border-bottom:1px solid var(--linie); }
+.pe td { padding:6px 8px; border-bottom:1px solid var(--linie); vertical-align:middle; white-space:nowrap; }
+.pe td.kz { font-family:var(--f-mono); color:var(--blau); font-weight:700; }
+.pe td.link { color:var(--blau); font-size:.74rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+.pe td.lang { white-space:normal; }
+.pe tr.gruppe td { background:var(--blau-hell); color:var(--blau); font-weight:700; font-size:.74rem; }
+.pe tr.gruppe.z td { background:color-mix(in srgb, var(--gelb) 14%, var(--karte)); color:var(--text); }
+.pe tr.spaeter td { color:var(--leise); }
+.art-chip { font-size:.66rem; font-weight:700; padding:1px 7px; border-radius:5px; border:1px solid var(--linie-stark); white-space:nowrap; }
+.art-chip.p { background:var(--text); color:var(--karte); border-color:var(--text); }
+.art-chip.w { color:var(--blau); border-color:var(--blau-mittel); }
+.art-chip.z { border-style:dashed; border-color:var(--gelb); color:var(--text); }
+.nw-karte { border:1.5px solid var(--blau-mittel); border-radius:12px 5px 5px 5px; padding:10px 12px; display:grid; gap:8px; background:var(--karte); }
+.nw-felder { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; }
+.paket-liste { display:grid; gap:4px; }
+.paket-liste div { padding:7px 9px; border-radius:8px; font-size:.8rem; display:grid; gap:1px; }
+.paket-liste div small { color:var(--leise); font-size:.7rem; }
+.paket-liste div.an { background:var(--blau-hell); color:var(--blau); font-weight:600; }
+
+/* Sprechzeiten */
+.slots { display:grid; gap:3px; }
+.slot { display:grid; grid-template-columns:96px 1fr auto; gap:10px; align-items:center; padding:7px 9px; border-radius:9px 3px 3px 3px; border:1px solid var(--linie); background:var(--karte); font-size:.8rem; }
+.slot .zeit { font-family:var(--f-mono); font-weight:600; font-size:.74rem; }
+.slot small { display:block; color:var(--leise); font-size:.7rem; }
+.slot.frei { border-style:dashed; color:var(--leise); background:transparent; }
+.slot.puffer { padding:0 9px; font-size:.64rem; color:var(--leise); background:transparent; border:none; grid-template-columns:96px 1fr; }
+.slot.puffer .zeit { font-size:.62rem; font-weight:400; }
+.slot.konflikt { border-color:var(--rot); border-style:solid; }
+.slot.dienst { background:var(--knopf); border-color:var(--linie-stark); }
+
+/* Kalender */
+table.kal { border-collapse:separate; border-spacing:0; width:100%; font-size:.74rem; table-layout:fixed; }
+.kal th { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--leise); font-weight:700; padding:6px; text-align:left; border-bottom:1px solid var(--linie); }
+.kal th.kw { width:52px; }
+.kal td { border-bottom:1px solid var(--linie); border-left:1px solid var(--linie); vertical-align:top; padding:4px 5px 5px; height:66px; min-width:0; }
+.kal td.kw { font-family:var(--f-mono); color:var(--leise); font-size:.64rem; border-left:none; }
+.kal td.ut { background:var(--blau-hell); }
+.kal td.fer { background:repeating-linear-gradient(135deg, transparent 0 5px, var(--linie) 5px 7px); }
+.kal td.heute { box-shadow:inset 0 0 0 2px var(--blau); }
+.kal .tagnr { font-family:var(--f-mono); font-size:.62rem; color:var(--leise); display:block; }
+.ev { display:block; border-radius:4px; padding:1px 4px; margin-top:2px; font-size:.62rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
+.ev.dienst { background:var(--karte); color:var(--text); border:1px solid var(--linie-stark); }
+.ev.frist { background:var(--rot); color:#fff; }
+.ev.gn { background:var(--blau); color:#fff; }
+.ev.sz { border:1px solid var(--blau-mittel); color:var(--blau); background:var(--karte); }
+.ev.sz.n { border-color:var(--blau); }
+.ev.aus { background:var(--karte); color:var(--leise); border:1px dashed var(--leise); }
+.ev.ohne { background:color-mix(in srgb, var(--gelb) 30%, var(--karte)); color:var(--text); }
+.ev.info { background:var(--karte); color:var(--blau); border-left:3px solid var(--blau); }
+.fchip { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--linie-stark); border-radius:999px; padding:2px 9px; font-size:.72rem; font-weight:600; background:var(--karte); white-space:nowrap; }
+.fchip i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.fchip.aus { opacity:.45; text-decoration:line-through; }
+
+/* QR-Karten */
+.qr-reihe { display:flex; gap:10px; flex-wrap:wrap; }
+.qr-karte { width:250px; border:1px dashed var(--linie-stark); border-radius:6px; padding:10px; display:grid; grid-template-columns:86px 1fr; gap:10px; background:#fff; color:#1d2433; }
+.qr-karte b { font-family:var(--f-titel); font-size:1rem; display:block; }
+.qr-karte small { font-size:.66rem; color:#5d6779; display:block; line-height:1.35; }
+.qr-karte .code { font-family:var(--f-mono); font-size:.72rem; font-weight:700; margin-top:4px; display:block; }
+.qr { width:86px; height:86px; display:block; }
+
+/* Ablauf Diktat */
+.fluss { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; counter-reset:f; }
+.fluss div { background:var(--karte); border:1px solid var(--linie); border-radius:12px 5px 5px 5px; padding:12px 14px; font-size:.88rem; display:grid; gap:3px; counter-increment:f; align-content:start; }
+.fluss div::before { content:counter(f); font-family:var(--f-mono); font-weight:700; color:var(--blau); font-size:.8rem; }
+.fluss b { font-family:var(--f-titel); font-size:1.02rem; }
+
+/* Stufen + offene Punkte */
+.stufen { display:grid; gap:10px; }
+.stufe { display:grid; grid-template-columns:44px 1fr; gap:12px; background:var(--karte); border:1px solid var(--linie); border-radius:14px 5px 5px 5px; padding:12px 14px; }
+.stufe .s { font-family:var(--f-titel); font-weight:700; font-size:1.5rem; color:var(--blau); line-height:1; }
+.stufe b { font-family:var(--f-titel); font-size:1.08rem; }
+.stufe p { font-size:.92rem; color:var(--leise); max-width:none; }
+ol.offen { margin:0; padding-left:1.3em; display:grid; gap:12px; }
+ol.offen li::marker { font-family:var(--f-mono); color:var(--blau); font-weight:700; }
+.vorschlag { display:block; margin-top:4px; font-size:.92rem; color:var(--leise); }
+.vorschlag b { color:var(--blau); }
+pre.baum { margin:0; background:var(--karte); border:1px solid var(--linie); border-radius:12px 5px 5px 5px; padding:12px 14px; font-family:var(--f-mono); font-size:.76rem; line-height:1.55; overflow-x:auto; }
+pre.baum .c { color:var(--leise); }
+.hinweis-klein { font-size:.86rem; color:var(--leise); }
+.vorlage { background:var(--karte); border:1px solid var(--linie); border-left:4px solid var(--blau); border-radius:4px 6px 6px 4px; padding:14px 18px; display:grid; gap:10px; font-size:.92rem; }
+.vorlage dl { margin:0; display:grid; grid-template-columns:minmax(120px, 190px) 1fr; gap:6px 16px; }
+.vorlage dt { font-weight:700; }
+.vorlage dd { margin:0; }
+
+@media (max-width:640px) {
+  .stufe { grid-template-columns:30px 1fr; }
+  .nw-felder { grid-template-columns:1fr 1fr; }
+  .vorlage dl { grid-template-columns:1fr; gap:2px; }
+  .vorlage dd { margin-bottom:8px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Symbole nach Lucide (ISC-Lizenz) -->
+  <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
+  <symbol id="i-hilfe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-haken" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-extern" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-kalender" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-uhr" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-buch" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+  <symbol id="i-leute" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-nachweis" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/></symbol>
+  <symbol id="i-eingang" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-gitter" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+  <symbol id="i-plan" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="5" width="8" height="3.5" rx="1"/><rect x="10" y="10.5" width="9" height="3.5" rx="1"/><rect x="7" y="16" width="5" height="2.5" rx="1"/></symbol>
+  <symbol id="i-sonne" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-sprechblase" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+  <symbol id="i-laden" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-hoch" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+  <symbol id="i-zu" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-liste" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-stern" viewBox="0 0 24 24"><path d="M12 2 15.09 8.26 22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></symbol>
+  <symbol id="i-auge" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+</svg>
+
+<header class="kopf">
+  <div class="kopf-innen">
+    <div class="marke">Lernbüro MT</div>
+    <div class="kopf-meta"><span>Konzept, Fassung 2</span><span>Stand 06.11.2026</span><span class="status">zur Abstimmung</span></div>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <h1>Offener Unterricht, ohne den Überblick zu verlieren</h1>
+  <p class="leise">Ein Container im Schulnetz. Sie stellen Lernpakete aus Moodle-Aufgaben zusammen, die Schüler planen daraus ihren eigenen Weg über die Unterrichtstage. Sie sehen jederzeit, wer was bearbeitet, wer Hilfe braucht, wie sich jemand selbst einschätzt und wer bereit für den Gelingensnachweis ist. Schüler öffnen ihren Plan mit einem persönlichen QR-Code, der Lehrerbereich läuft über HTTPS mit eigener Anmeldung.</p>
+  <div class="leitidee">
+    <p><b>Leitidee:</b> Jede Entscheidung eines Schülers ist ein Eintrag mit Zeitstempel. Plan, Ist, Verschiebungen und Wahlwechsel werden daraus berechnet.</p>
+    <p class="klein">So können Sie jeden Plan so ansehen, wie er an einem früheren Unterrichtstag aussah, und sehen genau, was sich seitdem geändert hat. Inhalte, Abgaben und Tests bleiben in Moodle. Lernbüro MT verwaltet Planung, Stand, Kann-Listen, Rückmeldung, Empfehlungen und Gelingensnachweise und verlinkt jede Aufgabe nach Moodle.</p>
+  </div>
+  <div class="neu-box">
+    <h3>Was sich gegenüber Fassung 1 geändert hat <span class="pille">Fassung 2</span></h3>
+    <ul class="neu-raster">
+      <li><b>Gelingensnachweis</b> statt Wissensnachweis. Ergebnis „gelungen“ oder „noch nicht gelungen“.</li>
+      <li><b>Kann-Listen</b> je Paket mit Einschätzer, vorher und nachher, 4 Stufen, als Zahl oder Smiley.</li>
+      <li><b>Empfehlungen</b> aus dem Feedbackgespräch je Schüler, freiwillig oder verbindlich, dazu <b>Zusatzaufgaben</b> zur Differenzierung.</li>
+      <li><b>Ampel je laufender Aufgabe</b> im Tagesabschluss statt Tagesampel, mindestens einmal pro Woche.</li>
+      <li><b>Aufgabenname anklicken</b> öffnet die Aufgabe in Moodle.</li>
+      <li><b>Sprechzeiten und Prüfungszeiten</b> als getrennte Zeitfenster mit Termindauer und Puffer. Feedbackgespräche nur in Sprechzeiten, Fachgespräch und praktische Prüfung nur in Prüfungszeiten.</li>
+      <li><b>Kalender</b> mit Dienstkalender (iCal-Abo wie im TrackingDRS) und Halbjahresansicht.</li>
+      <li><b>Ausfall</b>: Schüler planen selbst um, „durch Ausfall“ zählt nicht gegen sie. Neu: „findet statt, ohne Sie“.</li>
+      <li><b>Mehrere Kollegen:</b> Team der Klasse mit vollen Rechten, weitere Kollegen mit Einsicht.</li>
+      <li><b>Bedienung:</b> farbige Symbole für die Bereiche der Schüler, jede Entscheidung in einem Overlay (Voransicht K).</li>
+      <li><b>Entschieden:</b> Ist per Tagesabschluss, keine Abmeldung auf geteilten iPads, Hilfe-Reihe für alle Lehrkräfte der Klasse, Abwahl bis „fertig gemeldet“, 1 Moodle-Kurs = 1 Klasse.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">01</span>Was Lernbüro MT kann</h2>
+  <div class="raster">
+    <div class="karte"><div class="etikett">Lernpakete</div><p>Pakete mit Pflichtaufgaben, Wahlgruppen („1 von diesen 3 Situationen“) und Zusatzaufgaben zur Differenzierung. Fristen je Aufgabe oder je Paket, jede Aufgabe mit Link in Moodle. Pakete lassen sich als Vorlage kopieren.</p></div>
+    <div class="karte"><div class="etikett">Lernplan je Schüler</div><p>Ein Raster wie im TrackingDRS, die Spalten sind Ihre Unterrichtstage. Der Schüler zieht Balken für die Tage, an denen er eine Aufgabe bearbeiten will. Ein Klick auf den Aufgabennamen öffnet sie in Moodle.</p></div>
+    <div class="karte"><div class="etikett">Kann-Listen</div><p>Je Paket die Kompetenzen als „Ich kann …“-Aussagen, verknüpft mit den Aufgaben. Der Schüler schätzt sich vorher und nachher ein, Sie setzen im Gespräch Ihre Einschätzung daneben.</p></div>
+    <div class="karte"><div class="etikett">Melden, Gespräch, Empfehlung</div><p>Der Schüler meldet „fertig“. Sie besprechen die Aufgabe, diktieren danach Ihre Rückmeldung und empfehlen bei Bedarf Aufgaben zum Wiederholen oder Vertiefen, freiwillig oder verbindlich mit Frist.</p></div>
+    <div class="karte"><div class="etikett">Gelingensnachweise</div><p>Der Schüler meldet sich bereit, sobald seine Kann-Liste eingeschätzt ist. Moodle-Tests schalten Sie in Moodle frei, praktische Prüfung und Fachgespräch bucht er in Ihrer Prüfungszeit. Ergebnis: gelungen oder noch nicht gelungen.</p></div>
+    <div class="karte"><div class="etikett">Termine und Kalender</div><p>Sprechzeiten für Feedbackgespräche und Prüfungszeiten für Fachgespräche und praktische Prüfungen, jeweils mit Termindauer und Puffer. Ein Kalender zeigt Dienstkalender, Unterrichtstage, Sprech- und Prüfungszeiten, Fristen und Ferien, bis zum ganzen Halbjahr.</p></div>
+    <div class="karte"><div class="etikett">Ihr Überblick</div><p>Klassenübersicht mit dem Stand jedes Schülers je Aufgabe, Hilfe-Meldungen live, Ampel der laufenden Aufgaben, Eingang „zu prüfen“, Bereit-Liste, Termine heute. Je Schüler der volle Entscheidungsverlauf.</p></div>
+    <div class="karte"><div class="etikett">Im Team</div><p>Mehrere Lehrkräfte je Klasse mit vollen Rechten, weitere Kollegen mit Einsicht (nur lesen). Jeder Eintrag zeigt, wer ihn gemacht hat.</p></div>
+    <div class="karte"><div class="etikett">Ausgaben</div><p>Lernstand-Bericht je Schüler als PDF (mit Kann-Liste und Empfehlungen), Klassenübersicht als PDF, Komplett-Sicherung als ZIP.</p></div>
+  </div>
+  <p class="leise"><b>Bewusst nicht im System:</b> Arbeitsblätter, Abgaben und Tests. Sie bleiben in Moodle, eine Schnittstelle zu Moodle gibt es nicht. Aus Moodle kommt nur die Teilnehmerliste, im selben Format, das der Lehrerkalender schon einliest.</p>
+</section>
+
+<section>
+  <h2><span class="nr">02</span>Aufbau und Stände</h2>
+  <div class="aufbau">
+    <div class="ebene"><span class="etikett">Klasse</span><b>BSMT 24a</b><span>= ein Moodle-Kurs. Schüler aus der Teilnehmerliste, je Schüler ein QR-Code. Team (volle Rechte) und Einsicht (lesen).</span></div>
+    <div class="ebene"><span class="etikett">Lernpaket</span><b>Elektropneumatik</b><span>Lernfeld als Kennung, optionale Paket-Frist, freigegeben ab einem Unterrichtstag.</span></div>
+    <div class="ebene"><span class="etikett">Aufgabe</span><b>P2 Zylinderkräfte</b><span>Pflicht, Teil einer Wahlgruppe oder Zusatz. Frist, Moodle-Link, optional „nach P1“.</span></div>
+    <div class="ebene"><span class="etikett">Kann-Liste</span><b>K3 Kolbenkräfte</b><span>„Ich kann …“-Aussagen des Pakets, je Aussage die Aufgaben, in denen sie erarbeitet wird.</span></div>
+    <div class="ebene"><span class="etikett">Gelingensnachweis</span><b>Moodle-Test</b><span>Am Ende des Pakets. Art, Ergebnisform und Frist legen Sie je Nachweis fest.</span></div>
+  </div>
+  <div class="karte">
+    <h3>Stand einer Aufgabe je Schüler</h3>
+    <div class="stand-reihe">
+      <span class="sc offen">offen</span><span class="pfeil">→</span>
+      <span class="sc geplant">geplant</span><span class="pfeil">→</span>
+      <span class="sc arbeit">in Arbeit</span><span class="pfeil">→</span>
+      <span class="sc gemeldet">fertig gemeldet</span><span class="pfeil">→</span>
+      <span class="sc ok">angenommen</span>
+      <span class="leise" style="margin-left:6px">oder</span>
+      <span class="sc ueber">überarbeiten</span><span class="pfeil">→ neue Frist → zurück zu „in Arbeit“</span>
+    </div>
+    <p class="leise" style="font-size:.9rem">„In Arbeit“ entsteht, sobald der Schüler im Tagesabschluss angibt, dass er die Aufgabe bearbeitet hat. Nach Ablauf der Frist ohne „fertig“ wird die Aufgabe rot als <span class="sc spaet">Frist überschritten</span> markiert, bleibt aber bearbeitbar. Eine Zusatzaufgabe gibt es für einen Schüler erst, wenn sie ihm empfohlen wurde.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">03</span>So läuft ein Lernpaket</h2>
+  <div class="ablauf">
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Paket anlegen</b><span>Aufgaben mit Moodle-Link, Wahlgruppen, Zusatzaufgaben, Kann-Liste, Fristen, Gelingensnachweis</span></div>
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Freigeben</b><span>für eine Klasse ab einem Unterrichtstag</span></div>
+    <div class="schritt"><div class="wer-t">Schüler</div><b>Vorher einschätzen</b><span>Kann-Liste beim ersten Öffnen des Pakets</span></div>
+    <div class="schritt"><div class="wer-t">Schüler</div><b>Planen</b><span>Wahlaufgaben wählen, Balken über die Unterrichtstage ziehen</span></div>
+  </div>
+  <div class="schleife">
+    <div class="etikett">An jedem Unterrichtstag</div>
+    <div class="ablauf">
+      <div class="schritt"><div class="wer-t">Schüler</div><b>QR scannen</b><span>„Heute“ zeigt die geplanten Aufgaben, Name antippen öffnet Moodle</span></div>
+      <div class="schritt"><div class="wer-t">Schüler</div><b>Arbeiten</b><span>bei Bedarf „Ich brauche Hilfe“, erscheint sofort bei allen Lehrkräften der Klasse</span></div>
+      <div class="schritt"><div class="wer-t">Schüler</div><b>Fertig melden</b><span>dabei die Kann-Aussagen dieser Aufgabe „nachher“ einschätzen, Abgabe in Moodle</span></div>
+      <div class="schritt lk"><div class="wer-t">Beide</div><b>Feedbackgespräch</b><span>spontan oder gebucht. Sie diktieren danach, entscheiden und empfehlen</span></div>
+      <div class="schritt"><div class="wer-t">Schüler</div><b>Tagesabschluss</b><span>„heute bearbeitet“ und Ampel je Aufgabe, Plan anpassen</span></div>
+    </div>
+  </div>
+  <div class="ablauf">
+    <div class="schritt"><div class="wer-t">Schüler</div><b>Bereit melden</b><span>wenn alle Kann-Aussagen „nachher“ eingeschätzt sind, bis zur Frist</span></div>
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Freischalten / Termin</b><span>Moodle-Test in Moodle freigeben, Prüfung oder Fachgespräch bucht der Schüler</span></div>
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Ergebnis</b><span>gelungen oder noch nicht gelungen, wahlweise Punkte oder Note, Text per Diktat</span></div>
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Noch nicht gelungen?</b><span>neue Frist, dazu wahlweise Empfehlungen. Der Schüler darf sich jederzeit wieder bereit melden</span></div>
+    <div class="schritt lk"><div class="wer-t">Lehrkraft</div><b>Bericht</b><span>Lernstand je Schüler und Klassenübersicht als PDF</span></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">04</span>Was die Schüler sehen und tun</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Mein Plan (Raster)</h3>
+      <ul class="liste">
+        <li><b>Spalten sind Unterrichtstage</b>, keine Kalendertage. Ferien und Ausfälle sind schraffiert, Tage „ohne Lehrkraft“ gelb hinterlegt.</li>
+        <li><b>Aufgabenname anklicken</b> öffnet die Aufgabe in Moodle in einem neuen Tab. Der Plan bleibt offen. Auch nicht gewählte Wahlaufgaben lassen sich so vorher ansehen.</li>
+        <li><b>Pflichtaufgaben</b> stehen fest im Raster. <b>Wahlgruppen</b> zeigen alle Möglichkeiten, „wählen“ macht die anderen blass. Abwählen geht bis „fertig gemeldet“.</li>
+        <li><b>Empfohlen für dich:</b> eigene Zeilen mit Ihren Empfehlungen, gekennzeichnet als freiwillig oder verbindlich mit Frist.</li>
+        <li><b>Planen:</b> mit Finger oder Maus über die Tage ziehen. Vergangene Tage lassen sich nicht mehr umplanen.</li>
+        <li><b>Fristen</b> sind eine rote Marke, die nur Lehrkräfte setzen. Endet ein Balken nach der Frist, erscheint ein Hinweis.</li>
+      </ul></div>
+    <div class="karte"><h3>Heute, Kann-Liste, Termine (Handy und Tablet)</h3>
+      <ul class="liste">
+        <li>Die für heute geplanten Aufgaben, mit Moodle-Link und „Fertig melden“.</li>
+        <li><b>„Ich brauche Hilfe“</b> als großer Knopf. Der Schüler sieht seinen Platz in der Reihe.</li>
+        <li><b>Tagesabschluss:</b> je Aufgabe „heute bearbeitet“ und die Ampel, vorbelegt mit dem letzten Wert. Grün heißt im Plan, gelb Probleme, die er wohl selbst löst, rot kommt ohne Hilfe nicht weiter.</li>
+        <li><b>Kann-Liste:</b> „Ich kann …“-Aussagen des Pakets, vorher und nachher eingeschätzt.</li>
+        <li><b>Feedbacktermin buchen</b> in Ihrer Sprechzeit, mit Anlass. Ein offener Termin zur Zeit, absagen bis zum Vortag.</li>
+        <li><b>Rückmeldungen und Empfehlungen</b> nach Ihrer Freigabe. <b>Gelingensnachweise:</b> bereit melden, Termin buchen, Ergebnis ansehen.</li>
+      </ul></div>
+  </div>
+  <p class="hinweis-klein">Jeder Schüler sieht nur seinen eigenen Plan. Namen anderer Schüler erscheinen nirgends, auch nicht in der Hilfe-Reihe („Du bist Nr. 2“) oder bei den Terminen („belegt“).</p>
+</section>
+
+<section>
+  <h2><span class="nr">05</span>Was Sie als Lehrkraft sehen</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Übersicht (Startseite)</h3><p>Links „Jetzt“: Hilfe-Meldungen in der Reihenfolge des Eingangs, Eingang „zu prüfen“, Bereit-Liste für Gelingensnachweise, Ihre Termine heute. Rechts die Klassenmatrix: Schüler in Zeilen, Aufgaben eines Pakets in Spalten. Dazu die schlechteste Ampel der laufenden Aufgaben und Hinweise wie „Ampel P2 älter als eine Woche“.</p></div>
+    <div class="karte"><h3>Schülerseite</h3><p>Plan und Verlauf mit dem Ist darunter, Vergleich mit jedem früheren Unterrichtstag (grauer Schatten), Marken für verschoben, durch Ausfall, neu gewählt, abgewählt, empfohlen. Liste aller Entscheidungen mit Zeitstempel. Weitere Reiter: Kann-Liste (Schüler und Lehrkraft nebeneinander), Rückmeldungen und Empfehlungen, Gelingensnachweise, Bericht.</p></div>
+    <div class="karte"><h3>Rückmeldung und Empfehlung</h3><p>Aus „zu prüfen“ oder aus dem Termin öffnen. Sie sehen die Kann-Aussagen der Aufgabe mit der Einschätzung des Schülers und setzen Ihre daneben. Nach dem Gespräch diktieren Sie, entscheiden (angenommen oder überarbeiten) und empfehlen Aufgaben, freiwillig oder verbindlich mit Frist.</p></div>
+    <div class="karte"><h3>Verwaltung</h3><p>Pakete mit Kann-Liste und Zusatzaufgaben, Vorlagen, Klassen mit Moodle-Import und QR-Karten, Unterrichtstage, Ausfälle und „ohne Sie“, Sprech- und Prüfungszeiten, Kalender-Abos, Team und Einsicht je Klasse, Darstellung der Einschätzer je Klasse. Lehrkraft-Konten verwaltet ein Admin, wie im TrackingDRS.</p></div>
+  </div>
+</section>
+
+<section id="skizzen">
+  <h2><span class="nr">06</span>Voransichten der Fenster</h2>
+  <p class="leise">Alle Namen und Inhalte sind Beispiele. Heute ist in den Skizzen Donnerstag, 05.11. Unterricht ist montags und donnerstags, Mo 16.11. fällt wegen der Zwischenprüfung aus, Mo 30.11. findet das Lernbüro ohne Sie statt (Fortbildung).</p>
+
+  <div class="raster-2">
+    <div class="karte">
+      <h3>Bedienprinzip: ruhige Seiten, Entscheidungen im Overlay</h3>
+      <p>Seiten zeigen nur den Stand. Alles, was in eine Entscheidung mündet, öffnet ein Overlay: am Handy als Blatt von unten, am PC als Fenster in der Mitte, wie die Detail-Fenster im Lehrerkalender. Jedes Overlay stellt <b>eine</b> Frage, hat einen Hauptknopf und „Abbrechen“ und öffnet nie ein zweites Overlay.</p>
+      <div class="raster" style="gap:10px;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr))">
+        <div><div class="etikett">Schüler</div><ul class="liste" style="font-size:.9rem">
+          <li>Fertig melden mit Kann-Aussagen</li><li>Tag abschließen</li><li>Wahlaufgabe wählen oder abwählen</li><li>Ausfall: verschieben oder selbst planen</li><li>Empfehlung einplanen</li><li>Bereit melden</li><li>Termin buchen oder absagen</li><li>Kann-Liste vorher einschätzen</li></ul></div>
+        <div><div class="etikett">Lehrkraft</div><ul class="liste" style="font-size:.9rem">
+          <li>Rückmeldung mit Diktat und Empfehlungen</li><li>Ergebnis eines Gelingensnachweises</li><li>Zeitfenster anlegen</li><li>Ausfall oder „ohne Sie“ eintragen</li><li>Freischalten in Moodle bestätigen</li><li>Teilnehmerliste übernehmen (Assistent)</li><li>Aufgabe oder Kann-Aussage anlegen</li></ul></div>
+      </div>
+      <p class="hinweis-klein"><b>Bewusst ohne Overlay:</b> der Hilfe-Knopf, er muss mit einem Tipp wirken, und das Ziehen der Balken im Plan, sonst wird Planen mühsam.</p>
+    </div>
+    <div class="karte">
+      <h3>Symbole für die Bereiche der Schüler</h3>
+      <p>Jeder Bereich hat ein festes Symbol und eine feste Farbe. Am PC und am Tablet quer stehen sie groß in einer Leiste links, am Handy in der Leiste unten. Unten in der linken Leiste sitzt der Hilfe-Knopf. So finden sich die Schüler auch ohne Lesen zurecht.</p>
+      <div class="reiter bunt" data-schueler="" style="flex-wrap:wrap;font-size:.86rem"></div>
+      <ul class="liste" style="font-size:.9rem">
+        <li><b>Mein Plan</b> (blau): Balken über die Unterrichtstage</li>
+        <li><b>Heute</b> (gelb): was heute dran ist, Hilfe, Tag abschließen</li>
+        <li><b>Kann-Liste</b> (grün): Einschätzen</li>
+        <li><b>Rückmeldungen</b> (hellblau): Texte und Empfehlungen, neue mit Zahl</li>
+        <li><b>Gelingensnachweise</b> (lila): bereit melden, Termine, Ergebnisse</li>
+      </ul>
+      <p class="hinweis-klein">Im Lehrerbereich bleiben die Symbole einfarbig und klein. Dort zählt Platz für die Klassenübersicht.</p>
+    </div>
+  </div>
+
+  <!-- A Schüler Plan -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>A · Schüler: Mein Plan</h3><span class="leise">PC oder Tablet quer, per QR-Code geöffnet, Symbol-Leiste links wie unten am Handy</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b><span class="wer">Lena Krämer · BSMT 24a</span>
+        <div class="rechts"><span class="wer">Mein Plan</span></div>
+      </div>
+      <div class="pc-rahmen"><nav class="schiene" data-an="plan" data-zahl="rueck"></nav>
+      <div class="pc-body">
+        <div class="spalte">
+          <div class="leiste"><span class="auswahl">Alle Pakete</span>
+            <div class="legende"><span><i class="m-bal"></i>geplant</span><span><i class="m-ist"></i>bearbeitet</span><span><span class="frist" style="position:static">F</span>Frist</span><span><i class="m-aus"></i>kein Unterricht</span><span><i class="m-ohne"></i>ohne Lehrkraft</span></div>
+            <div class="rechts leise" style="font-size:.74rem">Name anklicken = Moodle · Balken ziehen = planen</div></div>
+          <div class="banner">Nächste Frist: <b>P2 Zylinderkräfte berechnen</b> am Do 12.11., in 2 Unterrichtstagen.</div>
+          <div class="r-scroll"><table class="lp" id="raster-schueler"></table></div>
+        </div>
+        <div class="panel">
+          <div class="etikett">Gewählt</div>
+          <h4><span class="mono" style="color:var(--blau)">P2</span> Zylinderkräfte berechnen</h4>
+          <div class="stand-reihe"><span class="sc arbeit">in Arbeit</span><span class="art-chip p">Pflicht</span><span class="ampel a-g" title="Ampel grün"></span></div>
+          <div class="liste-klein">
+            <div><span class="dat">Frist</span><span>Do 12.11.</span></div>
+            <div><span class="dat">Geplant</span><span>Do 05.11., Mo 09.11.</span></div>
+            <div><span class="dat">Bearbeitet</span><span>Do 05.11.</span></div>
+          </div>
+          <span class="k"><svg class="i"><use href="#i-extern"/></svg>Aufgabe in Moodle öffnen</span>
+          <span class="k haupt gross" style="justify-content:center"><svg class="i"><use href="#i-haken"/></svg>Fertig melden</span>
+          <p class="leise" style="font-size:.74rem">Öffnet ein Fenster: Abgabe in Moodle bestätigen, Kann-Aussagen einschätzen, fertig (siehe K).</p>
+        </div>
+      </div></div>
+    </div></div>
+  </div>
+
+  <!-- B Handy -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>B · Schüler am Handy: Heute, Tagesabschluss und Gelingensnachweise</h3><span class="leise">eigenes Handy oder Schul-iPad hochkant</span></div>
+    <div class="rahmen"><div class="geraete-reihe">
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Heute</b><span class="wer">Do 05.11.</span><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche">
+          <div class="h-karte"><div class="etikett">Neue Rückmeldung · M. Göbel</div>
+            <div class="h-auf"><span class="kz">P1</span><b>Schaltzeichen</b><span class="rechts sc ok">angenommen</span></div>
+            <div class="fb-text">Du hast die Schaltzeichen sicher zugeordnet. Bei den 5/2-Wegeventilen verwechselst du noch die Betätigungsarten …</div>
+            <div class="emp-zeile"><span class="kz">Z2</span><div>Übung Betätigungsarten<small>empfohlen · freiwillig</small></div><span class="knopf-klein">einplanen</span></div></div>
+          <div class="h-karte"><div class="etikett">Für heute geplant</div>
+            <div class="h-auf"><span class="kz">P2</span><span class="alink">Zylinderkräfte berechnen</span></div>
+            <span class="k haupt" style="justify-content:center"><svg class="i"><use href="#i-haken"/></svg>Fertig melden</span></div>
+          <div class="hilfe-knopf"><svg class="i gr"><use href="#i-hilfe"/></svg><div>Ich brauche Hilfe<small>Du bist Nr. 2 · zurückziehen</small></div></div>
+          <span class="k gross" style="justify-content:center"><svg class="i"><use href="#i-haken"/></svg>Tag abschließen <span class="leise" style="font-weight:500">· noch offen</span></span>
+          <div class="h-karte"><div class="etikett">Feedback</div>
+            <div class="h-auf"><svg class="i"><use href="#i-uhr"/></svg><span>Do 12.11. · 09:45 · Anlass P2</span><span class="rechts knopf-klein">absagen</span></div></div>
+        </div>
+        <div class="h-fuss" data-an="heute" data-zahl="rueck"></div>
+      </div>
+
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Gelingensnachweise</b><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:580px">
+          <div class="h-karte"><div class="etikett">Elektropneumatik</div>
+            <div class="h-auf"><svg class="i"><use href="#i-nachweis"/></svg><b>Moodle-Test</b><span class="rechts leise" style="font-size:.72rem">bis Do 03.12.</span></div>
+            <div class="liste-klein"><div><span class="dat">Kann-Liste</span><span>2 von 5 „nachher“ eingeschätzt</span></div></div>
+            <div class="fortschritt"><i style="width:40%"></i></div>
+            <span class="k aus" style="justify-content:center">Ich bin bereit</span>
+            <span class="leise" style="font-size:.7rem">Erst die Kann-Liste fertig einschätzen.</span></div>
+          <div class="h-karte"><div class="etikett">SPS-Grundlagen</div>
+            <div class="h-auf"><svg class="i"><use href="#i-nachweis"/></svg><b>Fachgespräch</b><span class="rechts leise" style="font-size:.72rem">bis Do 17.12.</span></div>
+            <span class="k haupt" style="justify-content:center"><svg class="i"><use href="#i-kalender"/></svg>Termin buchen</span></div>
+          <div class="ueberlage" style="border-radius:0 0 14px 14px">
+            <div class="blatt">
+              <div class="griff"></div>
+              <b style="font-family:var(--f-titel);font-size:1.05rem">Fachgespräch SPS buchen</b>
+              <span class="leise" style="font-size:.76rem">nur in Prüfungszeiten · 15 Minuten · nur freie Zeiten</span>
+              <div class="tage-wahl"><span>Do<br>10.12.</span><span class="an">Do<br>17.12.</span></div>
+              <div class="zeiten"><span class="weg">10:15</span><span>10:35</span><span class="an">10:55</span></div>
+              <span class="k haupt gross" style="justify-content:center">Do 17.12. · 10:55 buchen</span>
+            </div>
+          </div>
+        </div>
+        <div class="h-fuss" data-an="gn"></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- C Kann-Liste Schüler -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>C · Schüler: Kann-Liste einschätzen</h3><span class="leise">links mit Smileys, rechts dieselbe Liste, wenn Sie für die Klasse Zahlen einstellen</span></div>
+    <div class="rahmen"><div class="geraete-reihe">
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Kann-Liste</b><span class="wer">Elektropneumatik</span><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche">
+          <div class="banner" style="font-size:.74rem">Grau markiert ist deine Einschätzung von vorher. Tippe an, wie es jetzt ist.</div>
+          <div class="ka"><p>Ich kann pneumatische Schaltzeichen nach DIN ISO 1219 lesen und zuordnen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P1</span></div>
+            <div class="skala"><span class="vor"><b>😟</b>muss viel üben</span><span><b>😐</b>brauche Hilfe</span><span><b>🙂</b>meist allein</span><span class="an"><b>😀</b>kann es perfekt</span></div></div>
+          <div class="ka"><p>Ich kann Wegeventile nach Anschlüssen, Schaltstellungen und Betätigung benennen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P1</span><span class="bz">A1–A3</span></div>
+            <div class="skala"><span class="vor"><b>😟</b>muss viel üben</span><span><b>😐</b>brauche Hilfe</span><span class="an"><b>🙂</b>meist allein</span><span><b>😀</b>kann es perfekt</span></div></div>
+          <div class="ka"><p>Ich kann Kolbenkräfte und Luftverbrauch von Zylindern berechnen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P2</span> · noch in Arbeit</div>
+            <div class="skala"><span><b>😟</b>muss viel üben</span><span class="vor"><b>😐</b>brauche Hilfe</span><span><b>🙂</b>meist allein</span><span><b>😀</b>kann es perfekt</span></div></div>
+          <span class="leise" style="font-size:.72rem">+ 2 weitere Aussagen (K4, K5)</span>
+        </div>
+        <div class="h-fuss" data-an="kann"></div>
+      </div>
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Kann-Liste</b><span class="wer">Elektropneumatik</span><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche">
+          <div class="banner" style="font-size:.74rem">1 = Ich muss noch viel üben · 2 = Ich brauche noch Hilfe · 3 = Ich kann es meistens allein · 4 = Ich kann es perfekt</div>
+          <div class="ka"><p>Ich kann pneumatische Schaltzeichen nach DIN ISO 1219 lesen und zuordnen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P1</span></div>
+            <div class="skala"><span class="vor"><b>1</b>muss viel üben</span><span><b>2</b>brauche Hilfe</span><span><b>3</b>meist allein</span><span class="an"><b>4</b>kann es perfekt</span></div></div>
+          <div class="ka"><p>Ich kann Wegeventile nach Anschlüssen, Schaltstellungen und Betätigung benennen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P1</span><span class="bz">A1–A3</span></div>
+            <div class="skala"><span class="vor"><b>1</b>muss viel üben</span><span><b>2</b>brauche Hilfe</span><span class="an"><b>3</b>meist allein</span><span><b>4</b>kann es perfekt</span></div></div>
+          <div class="ka"><p>Ich kann Kolbenkräfte und Luftverbrauch von Zylindern berechnen.</p>
+            <div class="bez">erarbeitet in <span class="bz">P2</span> · noch in Arbeit</div>
+            <div class="skala"><span><b>1</b>muss viel üben</span><span class="vor"><b>2</b>brauche Hilfe</span><span><b>3</b>meist allein</span><span><b>4</b>kann es perfekt</span></div></div>
+          <p class="leise" style="font-size:.72rem">Gespeichert wird immer die Stufe 1 bis 4. Umschalten zwischen Smileys und Zahlen ändert nur die Anzeige, keine Einschätzung geht verloren.</p>
+        </div>
+        <div class="h-fuss" data-an="kann"></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- D Lehrer Übersicht -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>D · Lehrkraft: Übersicht</h3><span class="leise">Startseite, PC im Klassenraum</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b>
+        <div class="reiter" style="margin-left:10px"><span class="an"><svg class="i"><use href="#i-gitter"/></svg>Übersicht</span><span><svg class="i"><use href="#i-eingang"/></svg>Zu prüfen <i class="zahl">3</i></span><span><svg class="i"><use href="#i-nachweis"/></svg>Nachweise <i class="zahl">1</i></span><span><svg class="i"><use href="#i-uhr"/></svg>Zeitfenster</span><span><svg class="i"><use href="#i-kalender"/></svg>Kalender</span><span><svg class="i"><use href="#i-buch"/></svg>Pakete</span><span><svg class="i"><use href="#i-leute"/></svg>Klassen</span></div>
+        <div class="rechts"><span class="wer">M. Göbel</span></div>
+      </div>
+      <div class="pc-body links">
+        <div class="spalte">
+          <div class="panel">
+            <h4><span class="hilfe-marke">2</span>Hilfe gerade</h4>
+            <div class="zeile-liste">
+              <div class="zl"><span class="nr">1</span><div>Mehmet Yilmaz<small>A1 Stempelvorrichtung · seit 4 min</small></div><span class="knopf-klein">erledigt</span></div>
+              <div class="zl"><span class="nr">2</span><div>Lena Krämer<small>P2 Zylinderkräfte · seit 1 min</small></div><span class="knopf-klein">erledigt</span></div>
+            </div>
+            <p class="leise" style="font-size:.7rem">Sehen alle Lehrkräfte der Klasse. „Erledigt“ gilt für alle.</p>
+          </div>
+          <div class="panel">
+            <h4><svg class="i"><use href="#i-uhr"/></svg>Termine heute</h4>
+            <div class="zeile-liste">
+              <div class="zl"><span class="uhr">09:45</span><div>Feedback · Jonas Weber<small>Anlass A1 Stempelvorrichtung</small></div><span class="knopf-klein">öffnen</span></div>
+              <div class="zl"><span class="uhr">10:15</span><div>Fachgespräch · Tim Schäfer<small>Gelingensnachweis SPS · A. Schmidt</small></div><span class="knopf-klein">öffnen</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4><svg class="i"><use href="#i-eingang"/></svg>Zu prüfen</h4>
+            <div class="zeile-liste">
+              <div class="zl"><span class="ampel a-y"></span><div>Mehmet Yilmaz · P2<small>fertig 09:12 · K3 „mit Hilfe“</small></div><span class="knopf-klein">öffnen</span></div>
+              <div class="zl"><span class="ampel a-g"></span><div>Tim Schäfer · P3<small>fertig 08:50 · K5 „sicher“</small></div><span class="knopf-klein">öffnen</span></div>
+              <div class="zl"><span class="ampel a-g"></span><div>Paul Becker · P1<small>fertig Mo 02.11. · K1, K2 „meist allein“</small></div><span class="knopf-klein">öffnen</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4><svg class="i"><use href="#i-nachweis"/></svg>Bereit für Gelingensnachweis</h4>
+            <div class="zl"><span class="mz bereit">GN</span><div>Tim Schäfer<small>Moodle-Test Elektropneumatik · seit 08:55</small></div><span class="knopf-klein">in Moodle frei ✓</span></div>
+          </div>
+        </div>
+        <div class="spalte">
+          <div class="leiste"><span class="auswahl">BSMT 24a</span><span class="auswahl">Paket: Elektropneumatik</span>
+            <div class="legende"><span><i class="mz off" style="min-width:18px;height:14px"></i>offen</span><span><i class="mz gepl" style="min-width:18px;height:14px"></i>geplant</span><span><i class="mz arb" style="min-width:18px;height:14px"></i>in Arbeit</span><span><i class="mz gem" style="min-width:18px;height:14px"></i>fertig gemeldet</span><span><i class="mz ok" style="min-width:18px;height:14px"></i>angenommen</span><span><i class="mz ueb" style="min-width:18px;height:14px"></i>überarbeiten</span></div>
+            <div class="rechts"><span class="k"><svg class="i"><use href="#i-laden"/></svg>Klassenübersicht PDF</span></div></div>
+          <div class="r-scroll"><table class="mx" id="matrix"></table></div>
+          <p class="leise" style="font-size:.74rem">„Ampel“ zeigt die schlechteste Ampel der laufenden Aufgaben. „Emp.“ zählt offene Empfehlungen. Ein Klick auf einen Namen öffnet die Schülerseite (E), ein Klick auf eine gelbe Zelle die Rückmeldung (F). Die Seite aktualisiert sich von selbst.</p>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- E Schülerseite Verlauf -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>E · Lehrkraft: Schülerseite mit Entscheidungsverlauf</h3><span class="leise">Plan gegen Ist, Verschiebungen, Wahlentscheidungen, Empfehlungen, Stand je Unterrichtstag</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lena Krämer</b><span class="wer">BSMT 24a</span>
+        <div class="reiter" style="margin-left:10px"><span class="an">Plan und Verlauf</span><span>Kann-Liste</span><span>Rückmeldungen und Empfehlungen</span><span>Gelingensnachweise</span><span>QR-Code</span></div>
+        <div class="rechts"><span class="k"><svg class="i"><use href="#i-laden"/></svg>Lernstand-Bericht PDF</span></div>
+      </div>
+      <div class="pc-body">
+        <div class="spalte">
+          <div class="leiste"><span class="leise" style="font-weight:600">Vergleichen mit</span><span class="auswahl">Stand am Mo 02.11. (Beginn)</span>
+            <div class="legende"><span><i class="m-geist"></i>Plan von damals</span><span><i class="m-bal"></i>Plan jetzt</span><span><i class="m-ist"></i>bearbeitet</span><span><i class="ampel a-g" style="width:8px;height:8px"></i>Ampel an dem Tag</span></div></div>
+          <div class="r-scroll"><table class="lp" id="raster-verlauf"></table></div>
+          <div class="raster" style="grid-template-columns:repeat(4,1fr);gap:8px">
+            <div class="panel"><span class="etikett">Plan eingehalten</span><b style="font-size:1.2rem;font-family:var(--f-titel)">1 von 1 Tag</b><span class="leise">heute noch offen</span></div>
+            <div class="panel"><span class="etikett">Verschiebungen</span><b style="font-size:1.2rem;font-family:var(--f-titel)">3</b><span class="leise">P3 zweimal, P2 einmal · dazu 1 durch Ausfall</span></div>
+            <div class="panel"><span class="etikett">Wahlwechsel</span><b style="font-size:1.2rem;font-family:var(--f-titel)">1</b><span class="leise">A1 → A2</span></div>
+            <div class="panel"><span class="etikett">Empfehlungen</span><b style="font-size:1.2rem;font-family:var(--f-titel)">2</b><span class="leise">1 eingeplant, 1 offen</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h4>Entscheidungen</h4>
+          <span class="auswahl" style="justify-self:start">Alle Arten</span>
+          <div class="liste-klein" style="gap:7px">
+            <div><span class="dat">Do 05.11.<br>09:20</span><span>Meldet <b>Hilfe</b> bei P2</span></div>
+            <div><span class="dat">Do 05.11.<br>08:20</span><span><b>Z1</b> eingeplant für Mo 23.11. <span class="d-tag emp">Empfehlung</span></span></div>
+            <div><span class="dat">Do 05.11.<br>08:15</span><span><b>P3</b> verschoben auf Mo 23.11. bis Do 26.11. <span class="d-tag versch">2. Mal</span></span></div>
+            <div><span class="dat">Do 05.11.<br>08:12</span><span><b>A2</b> gewählt <span class="d-tag neu">neu</span></span></div>
+            <div><span class="dat">Do 05.11.<br>08:11</span><span><b>A1</b> abgewählt <span class="d-tag weg">gewählt seit 02.11.</span></span></div>
+            <div><span class="dat">Do 05.11.<br>08:10</span><span><b>P2</b> verlängert bis Mo 09.11.</span></div>
+            <div><span class="dat">Do 05.11.<br>07:40</span><span>Ausfall Mo 16.11. eingetragen (A. Schmidt), <b>P3</b> auf Do 19.11. geschoben <span class="d-tag aus">durch Ausfall</span></span></div>
+            <div><span class="dat">Mo 02.11.<br>12:50</span><span>Tagesabschluss · P1 bearbeitet <span class="ampel a-g" style="vertical-align:-1px;width:9px;height:9px"></span></span></div>
+            <div><span class="dat">Mo 02.11.<br>11:20</span><span><b>P1</b> angenommen (M. Göbel), empfiehlt <b>Z2</b> freiwillig und <b>Z1</b> verbindlich bis 26.11.</span></div>
+            <div><span class="dat">Mo 02.11.<br>11:05</span><span><b>P1</b> fertig gemeldet · K1 😀 K2 🙂</span></div>
+            <div><span class="dat">Mo 02.11.<br>08:05</span><span>Erster Plan angelegt, Kann-Liste „vorher“ eingeschätzt</span></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- F Rückmeldung -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>F · Lehrkraft: Rückmeldung und Empfehlungen nach dem Gespräch</h3><span class="leise">aus „Zu prüfen“ oder dem Feedbacktermin geöffnet, Diktat läuft</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b><div class="reiter" data-lehrer="pruefen" style="margin-left:10px"></div></div>
+      <div class="app-flaeche" style="min-height:640px">
+        <div class="dimm">
+          <div class="modal">
+            <div class="modal-kopf"><b>Rückmeldung · P1 Schaltzeichen nach DIN ISO 1219</b><span class="leise">Paul Becker · fertig gemeldet Mo 02.11. 12:40</span><span class="rechts"><svg class="i"><use href="#i-zu"/></svg></span></div>
+            <div class="modal-inhalt">
+              <div style="display:grid;gap:12px;align-content:start">
+                <div class="feld"><span>Kann-Aussagen dieser Aufgabe</span>
+                  <div>
+                    <div class="kv" style="font-size:.62rem;color:var(--leise);font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding-top:0"><span>Aussage</span><span style="text-align:center">Schüler</span><span style="text-align:center">Ihre Sicht</span></div>
+                    <div class="kv"><span>K1 Schaltzeichen lesen und zuordnen</span><span class="sch">🙂<small>vorher 😐</small></span>
+                      <div class="skala klein"><span><b>1</b>muss viel üben</span><span><b>2</b>brauche Hilfe</span><span class="an"><b>3</b>meist allein</span><span><b>4</b>kann es perfekt</span></div></div>
+                    <div class="kv diff"><span>K2 Wegeventile benennen<br><small class="leise">Einschätzungen weichen ab</small></span><span class="sch">😀<small>vorher 😟</small></span>
+                      <div class="skala klein"><span><b>1</b>muss viel üben</span><span class="an"><b>2</b>brauche Hilfe</span><span><b>3</b>meist allein</span><span><b>4</b>kann es perfekt</span></div></div>
+                  </div></div>
+                <div class="feld"><span>Abgabe</span><span class="k" style="justify-self:start"><svg class="i"><use href="#i-extern"/></svg>in Moodle ansehen</span></div>
+                <div class="feld"><span>Entscheidung</span>
+                  <span class="radio"><i class="an"></i>angenommen</span>
+                  <span class="radio"><i></i>überarbeiten bis</span>
+                  <span class="eingabe" style="opacity:.55"><svg class="i"><use href="#i-kalender"/></svg>Do 12.11.</span></div>
+              </div>
+              <div style="display:grid;gap:10px;align-content:start">
+                <div class="diktat"><span class="mic"><svg class="i gr"><use href="#i-mic"/></svg></span>
+                  <div style="display:grid;gap:2px;flex:1"><b style="font-size:.86rem">Aufnahme läuft · 0:42</b><div class="welle" id="welle"></div></div>
+                  <span class="k">Stopp</span></div>
+                <div class="feld"><span>Text für den Schüler (bearbeitbar)</span>
+                  <div class="textfeld">Du hast die Schaltzeichen sicher zugeordnet und die Wegeventile richtig benannt. Bei den 5/2-Wegeventilen verwechselst du noch die <mark>Betätigungsarten</mark>, also Muskelkraft, Feder und Magnet. Dazu habe ich dir eine kurze Übung empfohlen. Für P2 nimmst du die Kolbenfläche immer in Quadratzentimetern.</div></div>
+                <div class="feld"><span>Empfehlungen für Paul</span>
+                  <div class="zeile-liste">
+                    <div class="emp-zeile"><span class="kz">Z2</span><div>Übung Betätigungsarten<small>Zusatz · Wiederholung · zu K2</small></div><span class="schalter"><span class="an">freiwillig</span><span>verbindlich</span></span></div>
+                    <div class="emp-zeile"><span class="kz">P1</span><div>Schaltzeichen, Seite 3 noch einmal ansehen<small>schon erledigte Aufgabe</small></div><span class="schalter"><span class="an">freiwillig</span><span>verbindlich</span></span></div>
+                    <div class="emp-zeile"><span class="kz">Z1</span><div>Druckluftverbrauch einer Anlage<small>Zusatz · Vertiefung · Frist Do 26.11.</small></div><span class="schalter"><span>freiwillig</span><span class="an">verbindlich</span></span></div>
+                  </div>
+                  <span class="knopf-klein" style="justify-self:start;margin-top:2px">+ Aufgabe empfehlen</span></div>
+                <p class="leise" style="font-size:.74rem">Erkannt im Container in etwa 10 Sekunden, die Aufnahme ist danach gelöscht. Unsichere Wörter sind markiert.</p>
+              </div>
+            </div>
+            <div class="modal-fuss"><span class="leise">Paul sieht Text, Ihre Einschätzung und die Empfehlungen erst nach „Freigeben“.</span><span class="k">Entwurf speichern</span><span class="k haupt">Freigeben</span></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- G Paket bearbeiten -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>G · Lehrkraft: Lernpaket bearbeiten</h3><span class="leise">Aufgaben, Wahlgruppe, Zusatzaufgaben, Kann-Liste, Fristen, Gelingensnachweis</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b><div class="reiter" data-lehrer="pakete" style="margin-left:10px"></div>
+        <div class="rechts"><span class="k">Als Vorlage kopieren</span><span class="k haupt">Freigeben für Klasse</span></div></div>
+      <div class="pc-body links" style="grid-template-columns:220px minmax(0,1fr)">
+        <div class="panel">
+          <span class="etikett">Pakete BSMT 24a</span>
+          <div class="paket-liste">
+            <div class="an">Elektropneumatik<small>LF 4 · freigegeben ab Mo 02.11.</small></div>
+            <div>SPS-Grundlagen<small>LF 7 · ab Mo 23.11.</small></div>
+            <div>Sensorik<small>Entwurf</small></div>
+          </div>
+          <span class="etikett" style="margin-top:6px">Vorlagen</span>
+          <div class="paket-liste"><div>Elektropneumatik 2025/26<small>aus BSMT 23a</small></div></div>
+          <span class="k" style="justify-content:center">+ Neues Paket</span>
+        </div>
+        <div class="spalte">
+          <div class="raster" style="grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">
+            <div class="feld"><span>Titel</span><span class="eingabe">Elektropneumatik</span></div>
+            <div class="feld"><span>Lernfeld</span><span class="eingabe">LF 4</span></div>
+            <div class="feld"><span>Freigegeben ab</span><span class="eingabe">Mo 02.11.</span></div>
+            <div class="feld"><span>Paket-Frist</span><span class="eingabe">Do 03.12.</span></div>
+          </div>
+          <div class="r-scroll">
+            <table class="pe">
+              <thead><tr><th>Kürzel</th><th>Aufgabe</th><th>Art</th><th>Frist</th><th>Moodle-Link</th><th>Voraussetzung</th></tr></thead>
+              <tbody>
+                <tr><td class="kz">P1</td><td>Schaltzeichen nach DIN ISO 1219</td><td><span class="art-chip p">Pflicht</span></td><td>Do 05.11.</td><td class="link">moodle…/mod/assign/view.php?id=4811</td><td class="leise">–</td></tr>
+                <tr><td class="kz">P2</td><td>Zylinderkräfte berechnen</td><td><span class="art-chip p">Pflicht</span></td><td>Do 12.11.</td><td class="link">moodle…/mod/assign/view.php?id=4812</td><td class="leise">–</td></tr>
+                <tr class="gruppe"><td colspan="6">Wahlgruppe A · Lernsituation · wähle 1 von 3 · gemeinsame Frist Do 26.11.</td></tr>
+                <tr><td class="kz">A1</td><td>Stempelvorrichtung</td><td><span class="art-chip w">Wahl A</span></td><td class="leise">Gruppe</td><td class="link">moodle…/mod/assign/view.php?id=4820</td><td class="leise">–</td></tr>
+                <tr><td class="kz">A2</td><td>Sortierweiche für Pakete</td><td><span class="art-chip w">Wahl A</span></td><td class="leise">Gruppe</td><td class="link">moodle…/mod/assign/view.php?id=4821</td><td class="leise">–</td></tr>
+                <tr><td class="kz">A3</td><td>Biegevorrichtung</td><td><span class="art-chip w">Wahl A</span></td><td class="leise">Gruppe</td><td class="link">moodle…/mod/assign/view.php?id=4822</td><td class="leise">–</td></tr>
+                <tr class="spaeter"><td class="kz">P3</td><td>Weg-Schritt-Diagramm erstellen</td><td><span class="art-chip p">Pflicht</span></td><td>Do 26.11.</td><td class="link">moodle…/mod/assign/view.php?id=4813</td><td>nach P2 <span class="d-tag weg">später</span></td></tr>
+                <tr class="gruppe z"><td colspan="6">Zusatzaufgaben · nur sichtbar für Schüler, denen Sie sie empfehlen · Frist setzen Sie bei der Empfehlung</td></tr>
+                <tr><td class="kz">Z1</td><td>Druckluftverbrauch einer Anlage</td><td><span class="art-chip z">Vertiefung</span></td><td class="leise">bei Empf.</td><td class="link">moodle…/mod/assign/view.php?id=4840</td><td class="leise">–</td></tr>
+                <tr><td class="kz">Z2</td><td>Übung Betätigungsarten</td><td><span class="art-chip z">Wiederholung</span></td><td class="leise">bei Empf.</td><td class="link">moodle…/mod/quiz/view.php?id=4841</td><td class="leise">–</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="leiste"><span class="k">+ Aufgabe</span><span class="k">+ Wahlgruppe</span><span class="k">+ Zusatzaufgabe</span><span class="leise" style="font-size:.74rem">Zeilen per Ziehen sortieren</span></div>
+          <div class="nw-karte" style="border-color:var(--linie-stark)">
+            <h4 style="margin:0;font-family:var(--f-titel);display:flex;gap:6px;align-items:center"><svg class="i"><use href="#i-liste"/></svg>Kann-Liste zum Paket <span class="leise" style="font-family:var(--f-text);font-size:.74rem;font-weight:500;margin-left:6px">4 Stufen · Darstellung der Klasse: Smileys</span></h4>
+            <table class="pe">
+              <thead><tr><th>Nr.</th><th>Ich kann …</th><th>erarbeitet in</th></tr></thead>
+              <tbody>
+                <tr><td class="kz">K1</td><td class="lang">pneumatische Schaltzeichen nach DIN ISO 1219 lesen und zuordnen.</td><td><span class="bz">P1</span></td></tr>
+                <tr><td class="kz">K2</td><td class="lang">Wegeventile nach Anschlüssen, Schaltstellungen und Betätigung benennen.</td><td><span class="bz">P1</span> <span class="bz">A1</span> <span class="bz">A2</span> <span class="bz">A3</span> <span class="bz">Z2</span></td></tr>
+                <tr><td class="kz">K3</td><td class="lang">Kolbenkräfte und Luftverbrauch von Zylindern berechnen.</td><td><span class="bz">P2</span> <span class="bz">Z1</span></td></tr>
+                <tr><td class="kz">K4</td><td class="lang">eine elektropneumatische Steuerung für eine Situation planen und aufbauen.</td><td><span class="bz">A1</span> <span class="bz">A2</span> <span class="bz">A3</span></td></tr>
+                <tr><td class="kz">K5</td><td class="lang">einen Ablauf als Weg-Schritt-Diagramm darstellen.</td><td><span class="bz">P3</span></td></tr>
+              </tbody>
+            </table>
+            <span class="knopf-klein" style="justify-self:start">+ Kann-Aussage</span>
+          </div>
+          <div class="nw-karte">
+            <h4 style="margin:0;font-family:var(--f-titel);display:flex;gap:6px;align-items:center"><svg class="i"><use href="#i-nachweis"/></svg>Gelingensnachweis zum Paket</h4>
+            <div class="nw-felder">
+              <div class="feld"><span>Art</span><span class="eingabe">Moodle-Test ▾</span></div>
+              <div class="feld"><span>Ergebnis</span><span class="eingabe">gelungen / noch nicht + Punkte (max. 40) ▾</span></div>
+              <div class="feld"><span>Frist</span><span class="eingabe">Do 03.12.</span></div>
+              <div class="feld"><span>Moodle-Link</span><span class="eingabe" style="color:var(--blau);font-size:.74rem">…/mod/quiz/view.php?id=4830</span></div>
+            </div>
+            <p class="leise" style="font-size:.76rem">Vor der Bereitmeldung schätzt der Schüler alle Kann-Aussagen „nachher“ ein. Bei „Praktische Prüfung“ oder „Fachgespräch“ bucht er einen Termin in Ihrer Prüfungszeit. Ergebnisformen: gelungen / noch nicht gelungen, wahlweise mit Punkten oder Note.</p>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- H Sprechzeiten -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>H · Sprech- und Prüfungszeiten anlegen, Feedbacktermin buchen</h3><span class="leise">links Lehrkraft („Anlegen“ öffnet das Formular als Overlay, hier aufgeklappt gezeigt), rechts Schüler am Handy</span></div>
+    <div class="rahmen"><div class="geraete-reihe" style="flex-wrap:nowrap">
+      <div class="geraet" style="min-width:720px;flex:1">
+        <div class="app-kopf"><b>Zeitfenster</b><span class="wer">BSMT 24a</span><div class="rechts"><span class="k haupt">Anlegen</span></div></div>
+        <div class="pc-body links" style="grid-template-columns:250px minmax(0,1fr)">
+          <div class="panel">
+            <div class="feld"><span>Art</span>
+              <span class="radio"><i class="an"></i><span><b>Sprechzeit</b> · Feedbackgespräche</span></span>
+              <span class="radio"><i></i><span><b>Prüfungszeit</b> · Fachgespräch, praktische Prüfung</span></span></div>
+            <div class="feld"><span>Tag</span><span class="eingabe"><svg class="i"><use href="#i-kalender"/></svg>Do 12.11.</span></div>
+            <div class="raster" style="grid-template-columns:1fr 1fr;gap:6px">
+              <div class="feld"><span>von</span><span class="eingabe">09:30</span></div>
+              <div class="feld"><span>bis</span><span class="eingabe">10:30</span></div>
+              <div class="feld"><span>Termin (x)</span><span class="eingabe">10 min</span></div>
+              <div class="feld"><span>Puffer (y)</span><span class="eingabe">5 min</span></div>
+            </div>
+            <div class="feld"><span>Tage</span>
+              <span class="radio"><i class="an"></i>wöchentlich · jeden Do bis 17.12.</span>
+              <span class="radio"><i></i>nur an einzelnen Tagen …</span></div>
+            <span class="leise" style="font-size:.74rem">ergibt 4 Termine je Tag</span>
+            <div class="etikett" style="margin-top:4px">Ihre Zeitfenster</div>
+            <div class="zeile-liste">
+              <div class="zl" style="grid-template-columns:1fr"><div><b>Sprechzeit</b> · Do 09:30–10:30<small>10 min + 5 min Puffer · nur Feedback</small></div></div>
+              <div class="zl" style="grid-template-columns:1fr"><div><b>Prüfungszeit</b> · 10:15–11:15<small>nur Do 12.11., Do 10.12., Do 17.12. · 15 min + 5 min Puffer · nur Fachgespräch, praktische Prüfung</small></div></div>
+            </div>
+          </div>
+          <div class="spalte">
+            <div class="banner w"><b>Überschneidung:</b> 10:15 bis 10:30 liegt in Ihrer Prüfungszeit (10:15 bis 11:15). <span class="knopf-klein">Ende auf 10:15 setzen</span></div>
+            <div class="slots">
+              <div class="slot"><span class="zeit">09:30–09:40</span><div>Jonas Weber<small>Anlass A1 Stempelvorrichtung</small></div><span class="sc ok">gebucht</span></div>
+              <div class="slot puffer"><span class="zeit">09:40–09:45</span><span>Puffer</span></div>
+              <div class="slot"><span class="zeit">09:45–09:55</span><div>Lena Krämer<small>Anlass P2 Zylinderkräfte</small></div><span class="sc ok">gebucht</span></div>
+              <div class="slot puffer"><span class="zeit">09:55–10:00</span><span>Puffer</span></div>
+              <div class="slot frei"><span class="zeit">10:00–10:10</span><span>frei</span><span></span></div>
+              <div class="slot puffer"><span class="zeit">10:10–10:15</span><span>Puffer</span></div>
+              <div class="slot frei konflikt"><span class="zeit">10:15–10:25</span><span>frei · überschneidet sich</span><span></span></div>
+            </div>
+            <p class="leise" style="font-size:.74rem">Termine aus Ihrem Dienstkalender, die in eine Sprech- oder Prüfungszeit fallen, werden grau gezeigt und sind nicht buchbar. Sagt ein Schüler ab, wird der Platz wieder frei.</p>
+          </div>
+        </div>
+      </div>
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Feedbacktermin</b><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:440px">
+          <div class="h-karte"><div class="etikett">Meine Termine</div><span class="leise" style="font-size:.78rem">Noch kein offener Feedbacktermin.</span></div>
+          <div class="ueberlage" style="border-radius:0 0 14px 14px">
+            <div class="blatt">
+              <div class="griff"></div>
+              <b style="font-family:var(--f-titel);font-size:1.05rem">Feedbacktermin buchen</b>
+              <div class="feld"><span>Worum geht es?</span><span class="eingabe">P2 Zylinderkräfte berechnen ▾</span></div>
+              <div class="tage-wahl"><span class="an">Do<br>12.11.</span><span>Do<br>19.11.</span><span>Do<br>26.11.</span></div>
+              <div class="zeiten"><span class="weg">09:30</span><span class="an">09:45</span><span>10:00</span></div>
+              <span class="k haupt gross" style="justify-content:center">Do 12.11. · 09:45 buchen</span>
+              <span class="leise" style="font-size:.7rem">Du kannst einen offenen Feedbacktermin haben. Absagen bis Mi 11.11.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- I Kalender -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>I · Lehrkraft: Kalender, Halbjahresansicht</h3><span class="leise">Ausschnitt November und Dezember, nach unten weiter bis zum Halbjahresende</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b><div class="reiter" data-lehrer="kalender" style="margin-left:10px"></div>
+        <div class="rechts"><span class="wer" style="font-size:.74rem">Dienstkalender abgerufen 08:30 · nur lesen</span></div></div>
+      <div class="app-flaeche">
+        <div class="leiste">
+          <span class="schalter" style="font-size:.74rem"><span>Woche</span><span>Monat</span><span class="an">Halbjahr</span></span>
+          <span class="auswahl">1. Halbjahr 2026/27</span><span class="auswahl">BSMT 24a</span>
+          <div class="rechts" style="flex-wrap:wrap">
+            <span class="fchip"><i style="background:var(--karte);border:1px solid var(--linie-stark)"></i>Dienstkalender</span>
+            <span class="fchip"><i style="background:var(--blau-hell);border:1px solid var(--blau-mittel)"></i>Unterrichtstage</span>
+            <span class="fchip"><i style="border:1px solid var(--blau-mittel)"></i>Sprechzeiten</span>
+            <span class="fchip"><i style="border:1.5px solid var(--blau)"></i>Prüfungszeiten</span>
+            <span class="fchip"><i style="background:var(--rot)"></i>Fristen</span>
+            <span class="fchip"><i style="background:var(--blau)"></i>Gelingensnachweise</span>
+            <span class="fchip"><i style="background:repeating-linear-gradient(135deg, transparent 0 2px, var(--leise) 2px 3px)"></i>Ferien, Ausfall</span>
+          </div>
+        </div>
+        <div class="r-scroll"><table class="kal" id="kalender"></table></div>
+        <p class="leise" style="font-size:.74rem">Ihr Dienstkalender kommt als iCal-Abo aus Outlook, wie im TrackingDRS. Lernbüro MT liest ihn nur und schreibt nichts nach Outlook zurück. Fristen und Nachweise lassen sich je Klasse oder für alle Ihre Klassen zeigen.</p>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- J Klassen + Moodle-Import -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>J · Lehrkraft: Klasse, Moodle-Teilnehmerliste, Team und QR-Karten</h3><span class="leise">1 Moodle-Kurs = 1 Klasse, Teilnehmerliste im Format des Lehrerkalenders</span></div>
+    <div class="rahmen"><div class="geraet mittel">
+      <div class="app-kopf"><b>Klasse BSMT 24a</b><span class="wer">Schuljahr 2026/27</span>
+        <div class="rechts"><span class="k"><svg class="i"><use href="#i-hoch"/></svg>Moodle-Teilnehmerliste laden</span></div></div>
+      <div class="app-flaeche">
+        <div class="raster" style="grid-template-columns:1fr 1fr;gap:8px">
+          <div class="panel"><span class="etikett">Team · volle Rechte</span>
+            <div class="liste-klein"><div><span>M. Göbel</span></div><div><span>A. Schmidt</span></div></div><span class="knopf-klein" style="justify-self:start">+ Lehrkraft</span></div>
+          <div class="panel"><span class="etikett">Einsicht · nur lesen</span>
+            <div class="liste-klein"><div><svg class="i"><use href="#i-auge"/></svg><span>K. Becker (Klassenleitung)</span></div></div><span class="knopf-klein" style="justify-self:start">+ Kollegin oder Kollege</span></div>
+        </div>
+        <div class="banner">Datei <b>Teilnehmer_BSMT24a.csv</b> gelesen (Moodle-Export, wie im Lehrerkalender): 26 Einträge, davon 24 Schüler und 2 Lehrkräfte. Gespeichert werden nur Vor- und Nachname.</div>
+        <div class="r-scroll">
+          <table class="pe">
+            <thead><tr><th>Name in Moodle</th><th>Rolle</th><th>Im Lernbüro</th><th>Aktion</th></tr></thead>
+            <tbody>
+              <tr><td>Lena Krämer</td><td>Teilnehmer/in</td><td>vorhanden</td><td><span class="sc geplant">behalten</span></td></tr>
+              <tr><td>Elif Demir</td><td>Teilnehmer/in</td><td class="leise">neu</td><td><span class="sc ok">anlegen</span></td></tr>
+              <tr><td>Matthias Göbel</td><td>Trainer/in</td><td class="leise">–</td><td><span class="sc offen">überspringen</span></td></tr>
+              <tr><td class="leise">(nicht mehr in Moodle) Kevin Braun</td><td class="leise">–</td><td>vorhanden</td><td><span class="sc ueber">archivieren?</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="leiste"><span class="k haupt">Übernehmen</span><span class="k"><svg class="i"><use href="#i-laden"/></svg>QR-Karten als PDF (A4, 10 je Seite)</span><span class="auswahl">Einschätzer: Smileys</span><span class="leise" style="font-size:.74rem">Karte neu erzeugen macht den alten Code ungültig.</span></div>
+        <div class="qr-reihe">
+          <div class="qr-karte"><svg class="qr" viewBox="0 0 25 25" data-saat="7"></svg><div><b>Lena Krämer</b><small>BSMT 24a · Lernbüro MT</small><small>Mit der Kamera scannen, im Schulnetz.</small><span class="code">K7Q4-M2XD</span></div></div>
+          <div class="qr-karte"><svg class="qr" viewBox="0 0 25 25" data-saat="13"></svg><div><b>Elif Demir</b><small>BSMT 24a · Lernbüro MT</small><small>Mit der Kamera scannen, im Schulnetz.</small><span class="code">R9TB-4WPA</span></div></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <!-- K Overlays Schüler -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>K · Schüler: Entscheidungen im Overlay</h3><span class="leise">die Seite dahinter bleibt ruhig, jedes Blatt stellt eine Frage</span></div>
+    <div class="rahmen"><div class="geraete-reihe">
+
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Heute</b><span class="wer">Do 05.11.</span><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:540px">
+          <div class="h-karte"><div class="etikett">Für heute geplant</div><div class="h-auf"><span class="kz">P2</span><span>Zylinderkräfte berechnen</span></div></div>
+          <div class="ueberlage" style="border-radius:0"><div class="blatt">
+            <div class="griff"></div>
+            <b class="blatt-titel">P2 Zylinderkräfte fertig melden</b>
+            <div class="haken"><i class="an">✓</i>Meine Abgabe ist in Moodle hochgeladen</div>
+            <div class="etikett">Wie sicher bist du jetzt?</div>
+            <div class="ka"><p>Ich kann Kolbenkräfte und Luftverbrauch von Zylindern berechnen.</p>
+              <div class="skala"><span><b>😟</b>muss viel üben</span><span class="vor"><b>😐</b>brauche Hilfe</span><span class="an"><b>🙂</b>meist allein</span><span><b>😀</b>kann es perfekt</span></div></div>
+            <div class="blatt-knoepfe"><span class="k gross">Abbrechen</span><span class="k haupt gross">Fertig melden</span></div>
+          </div></div>
+        </div>
+        <div class="h-fuss" data-an="heute"></div>
+      </div>
+
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Heute</b><span class="wer">Do 05.11.</span><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:540px">
+          <div class="h-karte"><div class="etikett">Für heute geplant</div><div class="h-auf"><span class="kz">P2</span><span>Zylinderkräfte berechnen</span></div></div>
+          <div class="ueberlage" style="border-radius:0"><div class="blatt">
+            <div class="griff"></div>
+            <b class="blatt-titel">Tag abschließen</b>
+            <div class="abschluss-zeile">
+              <div class="haken"><i class="an">✓</i><b>P2</b>&nbsp;Zylinderkräfte heute bearbeitet</div>
+              <div class="ampel-wahl"><span class="an"><i class="ampel a-g"></i>im Plan</span><span><i class="ampel a-y"></i>Probleme, schaffe ich wohl</span><span><i class="ampel a-r"></i>ohne Hilfe nicht weiter</span></div>
+            </div>
+            <div class="abschluss-zeile"><div class="haken"><i></i>andere Aufgabe bearbeitet …</div></div>
+            <p class="leise" style="font-size:.7rem">Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Ampel.</p>
+            <div class="blatt-knoepfe"><span class="k gross">Später</span><span class="k haupt gross">Tag abschließen</span></div>
+          </div></div>
+        </div>
+        <div class="h-fuss" data-an="heute"></div>
+      </div>
+
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Mein Plan</b><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:540px">
+          <div class="h-karte"><div class="etikett">Elektropneumatik</div><div class="h-auf"><span class="kz">A2</span><span>Sortierweiche für Pakete</span></div></div>
+          <div class="ueberlage" style="border-radius:0"><div class="blatt">
+            <div class="griff"></div>
+            <b class="blatt-titel">Mo 16.11. fällt aus</b>
+            <span class="leise" style="font-size:.76rem">Zwischenprüfung · eingetragen von A. Schmidt</span>
+            <div class="etikett">Dafür hattest du geplant</div>
+            <div class="h-auf"><span class="kz">A2</span><span>Sortierweiche für Pakete</span></div>
+            <p class="leise" style="font-size:.72rem">Das zählt nicht als deine Verschiebung.</p>
+            <div class="blatt-knoepfe"><span class="k gross">Selbst planen</span><span class="k haupt gross">Auf Do 19.11. schieben</span></div>
+          </div></div>
+        </div>
+        <div class="h-fuss" data-an="plan"></div>
+      </div>
+
+      <div class="geraet handy">
+        <div class="app-kopf" style="border-radius:16px 16px 0 0"><b>Mein Plan</b><span class="rechts wer">Lena K.</span></div>
+        <div class="h-flaeche" style="min-height:540px">
+          <div class="h-karte"><div class="etikett">Wahlgruppe A · wähle 1 von 3</div><div class="h-auf"><span class="kz">A1</span><span>Stempelvorrichtung</span></div><div class="h-auf"><span class="kz">A2</span><span>Sortierweiche für Pakete</span></div><div class="h-auf"><span class="kz">A3</span><span>Biegevorrichtung</span></div></div>
+          <div class="ueberlage" style="border-radius:0"><div class="blatt">
+            <div class="griff"></div>
+            <b class="blatt-titel">A2 Sortierweiche wählen?</b>
+            <span class="leise" style="font-size:.76rem">Wahlgruppe A · Lernsituation · Frist Do 26.11.</span>
+            <span class="k" style="justify-self:start"><svg class="i"><use href="#i-extern"/></svg>Aufgabe erst in Moodle ansehen</span>
+            <p class="leise" style="font-size:.72rem">A1 und A3 werden blass. Wechseln geht, bis du A2 fertig meldest.</p>
+            <div class="blatt-knoepfe"><span class="k gross">Abbrechen</span><span class="k haupt gross">A2 wählen</span></div>
+          </div></div>
+        </div>
+        <div class="h-fuss" data-an="plan"></div>
+      </div>
+
+    </div></div>
+  </div>
+  <!-- L Heute am PC mit Overlay -->
+  <div class="skizze">
+    <div class="skizze-titel"><h3>L · Schüler am PC: Heute, „Tag abschließen“ als Fenster</h3><span class="leise">dieselben Symbole und dasselbe Overlay wie am Handy, nur als Fenster in der Mitte</span></div>
+    <div class="rahmen"><div class="geraet pc">
+      <div class="app-kopf"><b>Lernbüro MT</b><span class="wer">Lena Krämer · BSMT 24a</span><div class="rechts"><span class="wer">Heute · Do 05.11.</span></div></div>
+      <div class="pc-rahmen" style="min-height:470px"><nav class="schiene" data-an="heute" data-zahl="rueck"></nav>
+        <div class="pc-body" style="grid-template-columns:repeat(3, minmax(0,1fr));align-content:start">
+          <div class="panel"><div class="etikett">Für heute geplant</div>
+            <div class="h-auf"><span class="kz">P2</span><span class="alink">Zylinderkräfte berechnen</span></div>
+            <span class="k haupt" style="justify-content:center"><svg class="i"><use href="#i-haken"/></svg>Fertig melden</span></div>
+          <div class="panel"><div class="etikett">Neue Rückmeldung · M. Göbel</div>
+            <div class="h-auf"><span class="kz">P1</span><b>Schaltzeichen</b><span class="rechts sc ok">angenommen</span></div>
+            <div class="fb-text">Du hast die Schaltzeichen sicher zugeordnet …</div></div>
+          <div class="panel"><div class="etikett">Termine</div>
+            <div class="h-auf"><svg class="i"><use href="#i-uhr"/></svg><span>Feedback Do 12.11. · 09:45</span></div>
+            <span class="k gross" style="justify-content:center"><svg class="i"><use href="#i-haken"/></svg>Tag abschließen</span></div>
+        </div>
+        <div class="dimm" style="border-radius:0 0 8px 8px">
+          <div class="modal" style="width:min(520px, 100%)">
+            <div class="modal-kopf"><b>Tag abschließen · Do 05.11.</b><span class="rechts"><svg class="i"><use href="#i-zu"/></svg></span></div>
+            <div style="display:grid;gap:10px;padding:14px 16px;font-size:.86rem">
+              <div class="abschluss-zeile">
+                <div class="haken"><i class="an">✓</i><b>P2</b>&nbsp;Zylinderkräfte heute bearbeitet</div>
+                <div class="ampel-wahl"><span class="an"><i class="ampel a-g"></i>im Plan</span><span><i class="ampel a-y"></i>Probleme, schaffe ich wohl</span><span><i class="ampel a-r"></i>ohne Hilfe nicht weiter</span></div>
+              </div>
+              <div class="abschluss-zeile"><div class="haken"><i></i>andere Aufgabe bearbeitet …</div></div>
+              <p class="leise" style="font-size:.74rem">Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Ampel.</p>
+            </div>
+            <div class="modal-fuss"><span class="k gross">Später</span><span class="k haupt gross">Tag abschließen</span></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">07</span>Kann-Listen und Einschätzer</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Aufbau</h3>
+      <ul class="liste">
+        <li>Je Paket eine Kann-Liste mit „Ich kann …“-Aussagen, also den Kompetenzen des Pakets.</li>
+        <li>Jede Aussage nennt die Aufgaben, in denen sie erarbeitet wird, auch Zusatzaufgaben. Der Schüler sieht so an jeder Aufgabe, wozu sie dient.</li>
+        <li>Pakete und ihre Kann-Listen werden zusammen als Vorlage kopiert.</li>
+      </ul></div>
+    <div class="karte"><h3>Einschätzen</h3>
+      <ul class="liste">
+        <li><b>Vorher:</b> beim ersten Öffnen des Pakets, vor dem Planen.</li>
+        <li><b>Nachher:</b> beim Fertigmelden die Aussagen dieser Aufgabe, ganz sicher vor der Bereitmeldung zum Gelingensnachweis (Pflicht).</li>
+        <li><b>Ihre Sicht:</b> im Gespräch je Aussage daneben. Weichen Schüler und Lehrkraft ab, wird die Zeile hervorgehoben. Das ist oft der beste Gesprächsanlass.</li>
+      </ul></div>
+    <div class="karte"><h3>Skala</h3>
+      <ul class="liste">
+        <li>4 Stufen ohne Mitte: 1 „Ich muss noch viel üben“ · 2 „Ich brauche noch Hilfe“ · 3 „Ich kann es meistens allein“ · 4 „Ich kann es perfekt“.</li>
+        <li>Darstellung als Zahl oder Smiley, eingestellt je Klasse. Intern ist es immer dieselbe Stufe, Umschalten ist jederzeit möglich.</li>
+        <li>Die Bedeutung steht bei jeder Stufe dabei, auch bei der Zahlenskala und in Ihrer Ansicht. So wird „1“ nicht als Schulnote gelesen.</li>
+      </ul></div>
+    <div class="karte"><h3>Im Verlauf und Bericht</h3>
+      <ul class="liste">
+        <li>Zuwachs je Aussage von vorher zu nachher, Ihre Einschätzung daneben.</li>
+        <li>Im Lernstand-Bericht als kleine Tabelle je Paket.</li>
+        <li>Einschätzungen sind kein Ergebnis und fließen in nichts ein. Sie dienen dem Gespräch.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">08</span>Unterrichtstage, Ausfälle und Fristen</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Unterrichtstage als Regeln</h3>
+      <ul class="liste">
+        <li>Je Klasse legen Sie Regeln fest, z. B. „montags 07:45 bis 13:00, jede Woche“ und „donnerstags 07:45 bis 11:15, nur ungerade KW“.</li>
+        <li><b>Ferien</b> kommen aus dem Schulkalender-Abo (ICS), wie im TrackingDRS.</li>
+        <li>Jede Lehrkraft der Klasse kann einen Tag als <b>„fällt aus“</b> oder <b>„findet statt, ohne Sie“</b> markieren, mit Grund. Das geht auch kurzfristig oder nachträglich.</li>
+      </ul></div>
+    <div class="karte"><h3>Wenn ein Tag ausfällt</h3>
+      <ul class="liste">
+        <li>Der Plan wird <b>nicht automatisch</b> verschoben. Der Schüler sieht einen Hinweis mit den betroffenen Aufgaben und „auf den nächsten Unterrichtstag schieben“ oder „selbst neu planen“.</li>
+        <li>Diese Verschiebung trägt die Marke <span class="d-tag aus">durch Ausfall</span> und zählt nicht als eigene Verschiebung.</li>
+        <li>Ein nachträglich eingetragener Ausfall zählt nicht als „Plan nicht eingehalten“.</li>
+      </ul></div>
+    <div class="karte"><h3>„Findet statt, ohne Sie“</h3>
+      <ul class="liste">
+        <li>Zum Beispiel bei Fortbildung, Prüfungsaufsicht oder Krankheit mit Vertretung.</li>
+        <li>Der Plan gilt. Die Schüler arbeiten und machen ihren Tagesabschluss wie sonst.</li>
+        <li>Hilfe-Knopf und Termine sind an dem Tag gesperrt. Die Schüler sehen „heute ohne Lehrkraft“.</li>
+      </ul></div>
+    <div class="karte"><h3>Fristen</h3>
+      <ul class="liste">
+        <li>Eine Frist gilt je Aufgabe, je Wahlgruppe oder je Paket. Liegt keine eigene vor, gilt die nächsthöhere. Verbindliche Empfehlungen haben ihre eigene Frist.</li>
+        <li>Fällt der Fristtag aus, wandert die Frist auf den nächsten Unterrichtstag. Sie bekommen eine Meldung und können anders entscheiden.</li>
+        <li>Bei „überarbeiten“ und „noch nicht gelungen“ setzen Sie eine neue Frist. Vorgabe ist der übernächste Unterrichtstag.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">09</span>Sprech- und Prüfungszeiten, Empfehlungen und Kalender</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Sprechzeiten und Prüfungszeiten</h3>
+      <ul class="liste">
+        <li>Zwei getrennte Arten von Zeitfenstern: <b>Sprechzeiten</b> für Feedbackgespräche und <b>Prüfungszeiten</b> für Gelingensnachweise (Fachgespräch, praktische Prüfung).</li>
+        <li>Die Zuordnung ist fest: Ein Feedbackgespräch lässt sich nur in einer Sprechzeit buchen, ein Fachgespräch oder eine praktische Prüfung nur in einer Prüfungszeit.</li>
+        <li>Je Zeitfenster legen Sie Zeitraum, Termindauer x und Puffer y fest. Die Tage wählen Sie entweder <b>wöchentlich</b> (z. B. jeden Do bis 17.12.) oder als <b>einzelne Tage</b> im Kalender, z. B. Prüfungstage kurz vor den Fristen. Prüfungszeiten haben meist längere Termine.</li>
+        <li>Überschneiden sich zwei Zeitfenster oder ein Termin aus Ihrem Dienstkalender, warnt das Tool beim Anlegen.</li>
+        <li>Feedback: der Schüler gibt den Anlass an (Aufgabe, Paket oder allgemein). Er kann höchstens einen offenen Feedbacktermin haben und bis zum Vortag selbst absagen.</li>
+      </ul></div>
+    <div class="karte"><h3>Empfehlungen</h3>
+      <ul class="liste">
+        <li>Im Feedbackgespräch empfehlen Sie Aufgaben zum <b>Wiederholen</b> oder zur <b>Vertiefung</b>: jede Aufgabe des Pakets, auch schon erledigte, oder eine Zusatzaufgabe.</li>
+        <li>Je Empfehlung wählen Sie <b>freiwillig</b> oder <b>verbindlich mit Frist</b>. Sie erscheint im Plan des Schülers unter „Empfohlen für dich“.</li>
+        <li>Sie sehen, ob er sie einplant und bearbeitet. Bei „noch nicht gelungen“ sind Empfehlungen die Nacharbeit. Eine Sperre für die erneute Bereitmeldung gibt es nicht.</li>
+      </ul></div>
+    <div class="karte"><h3>Kalender</h3>
+      <ul class="liste">
+        <li><b>Dienstkalender</b> als iCal-Abo aus Outlook, alle 30 Minuten, nur lesen, nur für Sie sichtbar, Bauweise wie im TrackingDRS.</li>
+        <li>Dazu Unterrichtstage, Ausfälle, Ferien, Sprech- und Prüfungszeiten mit Buchungen, Fristen, Gelingensnachweise und Paket-Freigaben.</li>
+        <li>Ansichten Woche, Monat und Halbjahr. Ebenen einzeln ein- und ausblendbar.</li>
+        <li>Kein Schreiben nach Outlook (entschieden). Für den laufenden Tag gilt „Termine heute“ in der Übersicht.</li>
+      </ul></div>
+    <div class="karte"><h3>Mehrere Kollegen</h3>
+      <ul class="liste">
+        <li><b>Team</b> je Klasse: volle Rechte für Prüfen, Rückmeldung, Empfehlungen, Pakete, Sprech- und Prüfungszeiten.</li>
+        <li><b>Einsicht</b> je Klasse für weitere Kollegen, z. B. Klassenleitung: sieht Plan, Verlauf, Kann-Listen, Rückmeldungen und Ergebnisse, ändert nichts.</li>
+        <li>Jeder Eintrag trägt den Namen der Lehrkraft. Jede Lehrkraft hat ihre eigenen Sprech- und Prüfungszeiten und ihren eigenen Dienstkalender.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">10</span>Sprache zu Text im Container</h2>
+  <div class="fluss">
+    <div><b>Aufnehmen</b><span>Im Lehrerbereich auf „Diktat“ tippen. Der Browser darf das Mikrofon nur über HTTPS nutzen, das ist dort gegeben.</span></div>
+    <div><b>Senden</b><span>Nach „Stopp“ geht die Aufnahme an den Container im Schulnetz, sonst nirgendwohin.</span></div>
+    <div><b>Erkennen</b><span>Whisper (Modell „small“, Deutsch) wandelt die Sprache in Text. Eine Minute Diktat dauert nach meiner Schätzung 10 bis 30 Sekunden. Das messe ich im Test.</span></div>
+    <div><b>Löschen</b><span>Die Aufnahme wird sofort gelöscht. Gespeichert wird nur der Text, den Sie freigeben.</span></div>
+    <div><b>Korrigieren</b><span>Text im Feld bearbeiten. Ein Knopf entfernt Füllwörter („äh“). Erst „Freigeben“ macht ihn für den Schüler sichtbar.</span></div>
+  </div>
+  <p class="hinweis-klein">Fachbegriffe wie „5/2-Wegeventil“ oder „GRAFCET“ erkennt Whisper besser, wenn man sie vorgibt. Je Paket gibt es dafür eine kurze Fachwortliste, vorbefüllt aus Aufgabentiteln und Kann-Aussagen. Ist das Ergebnis mit „small“ zu ungenau, wechseln wir auf „medium“. Das braucht mehr Arbeitsspeicher und dauert etwa doppelt so lang.</p>
+</section>
+
+<section>
+  <h2><span class="nr">11</span>Zugang und Erreichbarkeit</h2>
+  <div class="tabelle-rahmen">
+    <table class="t-doc">
+      <tbody>
+        <tr><td>Schüler</td><td>Persönlicher QR-Code öffnet <code>http://lernbuero/s/&lt;Code&gt;</code>. Nur im Schulnetz, über HTTP, damit Schülergeräte keine Zertifikatswarnung sehen (wie die Team-Links im TrackingDRS). Ohne Passwort. Der Zugang bleibt auf dem Gerät gespeichert, bis ein anderer Code gescannt wird.</td></tr>
+        <tr><td>Geteilte Geräte</td><td>Keine automatische Abmeldung (entschieden). Wer ein Schul-iPad übernimmt, scannt seinen eigenen Code.</td></tr>
+        <tr class="neu"><td>Lehrkräfte</td><td>Nur HTTPS mit eigener CA (Stammzertifikat einmal auf den Lehrer-Geräten installieren), Anmeldung mit Konto und Passwort. Ein Admin legt Lehrkräfte an. Je Klasse Team (volle Rechte) oder Einsicht (nur lesen), sonst sieht eine Lehrkraft die Klasse nicht.</td></tr>
+        <tr class="neu"><td>Ausgehend</td><td>Der Container ruft per HTTPS den Dienstkalender (Outlook-Veröffentlichung) und den Schulkalender ab, dazu Updates von GitHub. Andere Daten verlassen ihn nicht.</td></tr>
+        <tr><td>Code verloren</td><td>Karte neu erzeugen, der alte Code ist sofort ungültig.</td></tr>
+        <tr><td>Von zu Hause</td><td>Nicht vorgesehen. Für den Lehrerbereich ließe sich später das VPN aus dem TrackingDRS übernehmen.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">12</span>Technik und Repository</h2>
+  <div class="raster-2">
+    <div class="karte"><h3>Bausteine</h3>
+      <ul class="liste">
+        <li><b>Server:</b> Python 3 mit SQLite, ohne Framework und ohne Build-Kette, Bauweise wie TrackingDRS.</li>
+        <li><b>Aus dem TrackingDRS übernommen:</b> Konten und Anmeldung, HTTPS mit eigener CA, HTTP-Seiten für Schüler auf Port 80, nft-Firewall, Proxmox-Einzeiler, Update-Funktion, ZIP-Sicherung, Kalender-Abos (Dienst und Schule), Regeln für Unterrichtstage, Besprechungstermine als Vorbild für Sprechzeiten, das Raster-Skript.</li>
+        <li><b>Aus dem Lehrerkalender (drs-lxc) übernommen:</b> der Leser für die Moodle-Teilnehmerliste (CSV mit Kopfzeile Vorname, Nachname, …) und das Namens-Matching. Eine JSON-Datei nehme ich zusätzlich an.</li>
+        <li><b>Datenhaltung:</b> eine Ereignistabelle, in die nur angehängt wird, plus berechneter Stand. Daraus kommen Stand je Unterrichtstag, Plan gegen Ist und Verlauf. Jeder Eintrag mit Urheber.</li>
+        <li><b>Live:</b> Übersicht und Hilfe-Reihe fragen alle paar Sekunden nach Neuem, wie die Tafel im TrackingDRS.</li>
+        <li><b>Spracherkennung:</b> faster-whisper in eigener Python-Umgebung, Modell beim Installieren einmal geladen.</li>
+        <li><b>Container:</b> Ubuntu 24.04, unprivilegiert, 4 Kerne, 6 GB RAM, 16 GB Platte. Auf dem Proxmox der Schule.</li>
+      </ul></div>
+    <div style="display:grid;gap:8px;min-width:0">
+<pre class="baum">LernbueroMT/                 <span class="c"># GitHub mgoebel89/LernbueroMT</span>
+├─ proxmox/lernbuero.sh      <span class="c"># Einzeiler auf dem Host</span>
+├─ deploy/
+│  ├─ install.sh             <span class="c"># Pakete, Whisper-Modell, Dienste</span>
+│  ├─ lernbuero.service
+│  ├─ firewall.nft · tls.sh
+│  └─ selbstupdate.sh
+├─ app/
+│  ├─ server.py · konten.py · db.py
+│  ├─ klassen.py             <span class="c"># Team, Einsicht, Moodle-Liste, QR</span>
+│  ├─ pakete.py              <span class="c"># Aufgaben, Wahlgruppen, Zusatz, Vorlagen</span>
+│  ├─ kannliste.py           <span class="c"># Aussagen, Einschätzungen</span>
+│  ├─ unterrichtstage.py     <span class="c"># Regeln, Ferien, Ausfall, ohne Sie</span>
+│  ├─ lernplan.py            <span class="c"># Balken, Ist, Stand je Tag</span>
+│  ├─ meldungen.py           <span class="c"># fertig, Hilfe, Ampel je Aufgabe</span>
+│  ├─ rueckmeldung.py        <span class="c"># Prüfen, Entscheidung, Empfehlungen</span>
+│  ├─ sprechzeiten.py        <span class="c"># Termine, Puffer, Buchung</span>
+│  ├─ kalender.py            <span class="c"># Abos, Halbjahr</span>
+│  ├─ diktat.py              <span class="c"># Whisper, Aufnahme löschen</span>
+│  ├─ nachweise.py           <span class="c"># Gelingensnachweise</span>
+│  ├─ berichte.py            <span class="c"># PDFs</span>
+│  └─ migrationen/
+├─ web/
+├─ tests/
+└─ README.md · KONZEPT.html</pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">13</span>Datenschutz und Betrieb</h2>
+  <p>Kann-Listen, Ampeln, Rückmeldungen, Empfehlungen und Ergebnisse der Gelingensnachweise sind Leistungsdaten. Wie besprochen stimmen Sie das mit der Datenschutzbeauftragten ab. Die folgende Beschreibung können Sie ihr so geben.</p>
+  <div class="vorlage">
+    <b style="font-family:var(--f-titel);font-size:1.1rem">Vorlage: Lernbüro MT, Beschreibung für die Datenschutzbeauftragte</b>
+    <dl>
+      <dt>Zweck</dt><dd>Planung und Begleitung offenen Unterrichts in der Fachrichtung Mechatronik: Lernplan der Schüler, Lernstand, Selbsteinschätzung, Rückmeldung und Gelingensnachweise.</dd>
+      <dt>Betroffene</dt><dd>Schüler der beteiligten Klassen, beteiligte Lehrkräfte.</dd>
+      <dt>Daten der Schüler</dt><dd>Vor- und Nachname, Klasse, persönlicher Zugangscode. Pläne und Entscheidungen mit Zeitstempel, Hilfe-Meldungen, Ampeln, Kann-Listen (Selbst- und Lehrkraft-Einschätzung), Rückmeldetexte, Empfehlungen, gebuchte Termine, Ergebnisse der Gelingensnachweise. Keine E-Mail-Adresse, keine Fehlzeiten, keine Gesundheitsdaten.</dd>
+      <dt>Daten der Lehrkräfte</dt><dd>Name, Anmeldename, Passwort nur als Hash, auf Wunsch die Abo-Adresse des eigenen Dienstkalenders.</dd>
+      <dt>Herkunft</dt><dd>Namen aus der Teilnehmerliste des Moodle-Kurses (Datei-Export, keine Schnittstelle). Alles Weitere entsteht im Unterricht.</dd>
+      <dt>Speicherort</dt><dd>Eigener Container auf dem Proxmox-Server der Schule im Schulnetz. Keine Cloud, keine Weitergabe an Dritte.</dd>
+      <dt>Zugriff</dt><dd>Schüler sehen nur ihre eigenen Daten. Lehrkräfte sehen nur Klassen, in denen sie als Team oder mit Einsicht eingetragen sind. Jeder Eintrag zeigt seinen Urheber.</dd>
+      <dt>Übertragung</dt><dd>Lehrerbereich nur über HTTPS. Schülerseiten über HTTP im Schulnetz, geschützt durch den persönlichen Code, aber im WLAN nicht verschlüsselt (siehe offene Punkte).</dd>
+      <dt>Sprachdiktat</dt><dd>Nur die Lehrkraft diktiert, nach dem Gespräch. Die Aufnahme wird im Container in Text umgewandelt und sofort gelöscht. Gespräche mit Schülern werden nicht aufgenommen.</dd>
+      <dt>Löschung</dt><dd>Nach Schuljahresende Archiv (nur lesbar, Codes ungültig), Löschung nach einer Frist, die mit Ihnen festgelegt wird. Vorschlag: ein Jahr. Vorher können Lernstand-Berichte als PDF gesichert werden.</dd>
+      <dt>Sicherung</dt><dd>Proxmox-Backup des Containers, zusätzlich Komplett-Sicherung als ZIP durch die Lehrkraft.</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">14</span>Bauplan in Stufen</h2>
+  <div class="stufen">
+    <div class="stufe"><span class="s">A</span><div><b>Grundgerüst und Klassen</b><p>Repo, Proxmox-Skript, Installation, Konten, HTTPS und HTTP für Schüler, Firewall, Update, Sicherung. Klassen mit Team und Einsicht, Moodle-Teilnehmerliste mit Zuordnungstabelle (Leser aus dem Lehrerkalender), QR-Codes und QR-Karten als PDF.</p></div></div>
+    <div class="stufe"><span class="s">B</span><div><b>Unterrichtstage und Pakete</b><p>Regeln für Unterrichtstage, Schulkalender-Abo, Ausfall und „ohne Sie“. Paket-Editor mit Pflicht-, Wahl- und Zusatzaufgaben, Kann-Liste, Fristen, Moodle-Links, Gelingensnachweis. Freigeben, als Vorlage kopieren.</p></div></div>
+    <div class="stufe"><span class="s">C</span><div><b>Lernplan der Schüler</b><p>Raster mit Ziehen, Wahl und Abwahl, Fristmarken, Moodle-Links am Namen, Ausfall-Hinweis. Handyansicht „Heute“, Tagesabschluss mit Ampel je Aufgabe, Kann-Liste vorher. Ereignisprotokoll und Stand je Tag. Klassenmatrix.</p></div></div>
+    <div class="stufe"><span class="s">D</span><div><b>Melden, Rückmeldung, Empfehlungen, Zeitfenster</b><p>Fertig melden mit Kann-Aussagen, Eingang „zu prüfen“, Ihre Einschätzung daneben, Entscheidung, Empfehlungen (freiwillig oder verbindlich), Hilfe-Knopf live. Sprech- und Prüfungszeiten mit Dauer und Puffer, Feedbacktermine buchen. Erst Texteingabe, dann das Diktat mit Whisper.</p></div></div>
+    <div class="stufe"><span class="s">E</span><div><b>Gelingensnachweise</b><p>Bereit melden nach vollständiger Kann-Liste, Bereit-Liste mit „in Moodle freigeschaltet“, Buchung von Fachgespräch und praktischer Prüfung in den Prüfungszeiten, Ergebnisse gelungen / noch nicht gelungen mit neuer Frist und Empfehlungen.</p></div></div>
+    <div class="stufe"><span class="s">F</span><div><b>Kalender, Verlauf und Ausgaben</b><p>Dienstkalender-Abo, Kalender mit Woche, Monat und Halbjahr. Schülerseite mit Vergleich gegen jeden früheren Unterrichtstag, Entscheidungsliste, Kennzahlen. Lernstand-Bericht und Klassenübersicht als PDF. Archiv.</p></div></div>
+  </div>
+  <p class="leise">Für später vorgemerkt: Voraussetzungen zwischen Aufgaben („P3 erst nach P2“) in der Oberfläche, Import der Moodle-Testergebnisse (wie im drs-lxc), Übergabe von Ergebnissen an die Notenliste, VPN für den Lehrerbereich.</p>
+</section>
+
+<section>
+  <h2><span class="nr">15</span>Offene Punkte</h2>
+  <div class="karte">
+    <p>Diese Punkte sind aus Ihren Anmerkungen entstanden. Bis Sie anders entscheiden, gilt jeweils mein Vorschlag.</p>
+    <ol class="offen" style="margin-top:10px">
+      <li><b>Selbsteinschätzung beim Fertigmelden:</b> In Fassung 1 gab es dort eine Ampel „lief gut / ging so / brauche Hilfe“. Mit Kann-Listen und Aufgaben-Ampel wäre das die dritte Einschätzung.<span class="vorschlag"><b>Vorschlag:</b> Beim Fertigmelden schätzt der Schüler stattdessen die Kann-Aussagen dieser Aufgabe „nachher“ ein (Voransicht A). Das ist konkreter und füllt nebenbei die Kann-Liste für den Gelingensnachweis.</span></li>
+      <li><b>Ihre Einschätzung für den Schüler sichtbar?</b><span class="vorschlag"><b>Vorschlag:</b> ja, nach „Freigeben“ zusammen mit dem Rückmeldetext. Abweichungen sind ohnehin Thema im Gespräch, der Schüler kann sie dann nachlesen.</span></li>
+      <li><b>Schülerseiten über HTTP:</b> Rückmeldetexte und Einschätzungen gehen dadurch unverschlüsselt durchs Schul-WLAN. Im TrackingDRS waren es nur Projektdaten.<span class="vorschlag"><b>Vorschlag:</b> so lassen und in der Abstimmung mit der Datenschutzbeauftragten offen ansprechen. Falls sie HTTPS verlangt, verteilen wir das Stammzertifikat per Geräteverwaltung auf die Schul-iPads. Eigene Handys müssten es dann einmal installieren.</span></li>
+      <li><b>Wer darf Empfehlungen und Ergebnisse sehen, die ein Kollege eingetragen hat?</b><span class="vorschlag"><b>Vorschlag:</b> alle im Team und mit Einsicht, mit Namen des Urhebers. Entwürfe, die noch nicht freigegeben sind, sieht nur der Verfasser.</span></li>
+      <li><b>Moodle-Teilnehmerliste:</b> Der Lehrerkalender liest den Moodle-Export als CSV, nicht als JSON.<span class="vorschlag"><b>Vorschlag:</b> Ich übernehme genau diesen Leser und nehme JSON zusätzlich an. Beim ersten echten Import prüfen wir es zusammen.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <h2><span class="nr">16</span>Bisher entschieden</h2>
+  <div class="tabelle-rahmen">
+    <table class="t-doc">
+      <thead><tr><th>Thema</th><th>Entscheidung</th></tr></thead>
+      <tbody>
+        <tr><td>Name</td><td>Lernbüro MT</td></tr>
+        <tr><td>Moodle</td><td>Inhalte, Abgaben und Tests bleiben in Moodle. Das Tool verwaltet Planung, Stand, Rückmeldung und verlinkt. Keine Schnittstelle. 1 Moodle-Kurs = 1 Klasse.</td></tr>
+        <tr><td>Aufgaben</td><td>Pflichtaufgaben und Wahlgruppen („1 von diesen 3“, mehrere je Paket). Reihenfolge frei, Voraussetzungen nur im Datenmodell vorgesehen.</td></tr>
+        <tr class="neu"><td>Zusatzaufgaben</td><td>Eigene Art (Vertiefung, Wiederholung), nur sichtbar für Schüler, denen sie empfohlen werden</td></tr>
+        <tr><td>Fristen</td><td>Späteste Termine je Aufgabe oder Paket</td></tr>
+        <tr><td>Planung</td><td>Je Unterrichtstag als Raster wie im TrackingDRS. Unterrichtstage stellt die Lehrkraft ein. Kein Zeitbedarf je Aufgabe.</td></tr>
+        <tr class="neu"><td>Moodle-Link</td><td>Klick auf den Aufgabennamen öffnet die Aufgabe in Moodle</td></tr>
+        <tr class="neu"><td>Ist</td><td>Tagesabschluss-Häkchen „heute bearbeitet“, vorausgefüllt aus dem Plan</td></tr>
+        <tr class="neu"><td>Ausfall</td><td>Schüler wird gefragt statt automatisch verschoben, „durch Ausfall“ zählt nicht gegen ihn, Frist wandert mit, auch nachträglich. Zusätzlich „findet statt, ohne Sie“.</td></tr>
+        <tr><td>Verlauf</td><td>Plan gegen Ist, Verschiebungen, Wahlentscheidungen und Stand je Unterrichtstag</td></tr>
+        <tr class="neu"><td>Abwahl</td><td>Wahlaufgabe abwählbar bis „fertig gemeldet“</td></tr>
+        <tr><td>Schülerzugang</td><td>Persönlicher QR-Code je Schüler, nur Schulnetz. Keine Abmeldung auf geteilten Geräten.</td></tr>
+        <tr><td>Wer ist wo</td><td>Nur Fortschritt, kein Ort</td></tr>
+        <tr class="neu"><td>Ampel</td><td>Grün, Gelb, Rot je laufender Aufgabe im Tagesabschluss, mindestens einmal pro Woche. Keine Tagesampel. Hilfe-Knopf live, Hilfe-Reihe für alle Lehrkräfte der Klasse.</td></tr>
+        <tr class="neu"><td>Kann-Listen</td><td>Je Paket, mit Aufgaben verknüpft. Vorher und nachher, 4 Stufen. Zahl oder Smiley je Klasse. „Nachher“ ist Pflicht vor der Bereitmeldung. Lehrkraft setzt im Gespräch ihre Einschätzung daneben.</td></tr>
+        <tr><td>Rückmeldung</td><td>Fertig melden, dann Gespräch, danach von der Lehrkraft diktiert (Whisper im Container), korrigiert und freigegeben. Keine Aufnahme des Gesprächs.</td></tr>
+        <tr class="neu"><td>Empfehlungen</td><td>Je Schüler aus dem Feedbackgespräch, Aufgaben zum Wiederholen oder Vertiefen, je Empfehlung freiwillig oder verbindlich mit Frist</td></tr>
+        <tr class="neu"><td>Zeitfenster</td><td>Zwei getrennte Arten: Sprechzeiten (nur Feedbackgespräche) und Prüfungszeiten (nur Fachgespräch und praktische Prüfung). Je Fenster Termindauer und Puffer, Tage wöchentlich oder einzeln gewählt (Prüfungstage). Feedback: Anlass angeben, ein offener Termin, Absage bis Vortag.</td></tr>
+        <tr class="neu"><td>Gelingensnachweise</td><td>Statt „Wissensnachweis“. Moodle-Test, praktische Prüfung, Fachgespräch. Bereit melden mit Frist. Ergebnis gelungen / noch nicht gelungen, wahlweise mit Punkten oder Note. Bei „noch nicht“ neue Frist und wahlweise Empfehlungen, ohne Sperre.</td></tr>
+        <tr class="neu"><td>Kalender</td><td>Dienstkalender per iCal-Abo nur lesen wie im TrackingDRS, nichts nach Outlook. Halbjahresansicht mit allen Fristen und Abgaben.</td></tr>
+        <tr class="neu"><td>Lehrkräfte</td><td>Team je Klasse mit vollen Rechten, weitere Kollegen mit Einsicht. Pakete als Vorlage kopierbar.</td></tr>
+        <tr><td>Schülerliste</td><td>Moodle-Teilnehmerliste im Format des Lehrerkalenders</td></tr>
+        <tr class="neu"><td>Datenschutz</td><td>Mit der Datenschutzbeauftragten abstimmen. Vorlage in Abschnitt 13.</td></tr>
+        <tr class="neu"><td>Bedienung</td><td>Ruhige Seiten, jede Entscheidung als Overlay (Handy: Blatt von unten, PC: Fenster). Ausnahmen: Hilfe-Knopf, Balken ziehen. Feste Symbole und Farben je Schüler-Bereich.</td></tr>
+        <tr><td>Ausgaben</td><td>Lernstand-Bericht je Schüler (PDF), Klassenübersicht (PDF), Sicherung als ZIP</td></tr>
+        <tr><td>Betrieb</td><td>LXC auf dem Proxmox der Schule, Lehrerbereich HTTPS mit Nutzerverwaltung</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function () {
+  var TAGE = [
+    { w:'Mo', d:'02.11.' }, { w:'Do', d:'05.11.', heute:true }, { w:'Mo', d:'09.11.' }, { w:'Do', d:'12.11.' },
+    { w:'Mo', d:'16.11.', aus:'Zwischenprüfung' }, { w:'Do', d:'19.11.' }, { w:'Mo', d:'23.11.' }, { w:'Do', d:'26.11.' },
+    { w:'Mo', d:'30.11.', ohne:'Fortbildung, Lernbüro ohne Lehrkraft' }, { w:'Do', d:'03.12.' }
+  ];
+  function h(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function hat(liste, i) { return liste && liste.indexOf(i) >= 0; }
+
+  // Reiter und Handy-Leiste aus EINER Liste, damit Symbol und Farbe überall gleich sind
+  var NS = 'http://www.w3.org/2000/svg';
+  function ikon(id) { var s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 'i'); var u = document.createElementNS(NS, 'use'); u.setAttribute('href', '#' + id); s.appendChild(u); return s; }
+  var SCH = [['plan','i-plan','Mein Plan','Plan'], ['heute','i-sonne','Heute','Heute'], ['kann','i-liste','Kann-Liste','Kann ich'], ['rueck','i-sprechblase','Rückmeldungen','Rückmeld.'], ['gn','i-nachweis','Gelingensnachweise','Nachweise']];
+  document.querySelectorAll('.schiene[data-an]').forEach(function (el) {
+    var an = el.getAttribute('data-an'), z = el.getAttribute('data-zahl');
+    SCH.forEach(function (r) {
+      var d = h('div', 'fi' + (r[0] === an ? ' an' : '')), b = h('b', 'ik ' + r[0]);
+      b.appendChild(ikon(r[1])); if (r[0] === z) b.appendChild(h('i', 'zahl', '1'));
+      d.appendChild(b); d.appendChild(document.createTextNode(r[0] === 'gn' ? 'Nachweise' : r[2])); el.appendChild(d);
+    });
+    var hs = h('div', 'hilfe-s'); hs.appendChild(ikon('i-hilfe')); hs.appendChild(document.createTextNode('Ich brauche Hilfe')); el.appendChild(hs);
+  });
+  function bunt(r, zahl) { var b = h('b', 'ik ' + r[0]); b.appendChild(ikon(r[1])); if (zahl) b.appendChild(h('i', 'zahl', '1')); return b; }
+  document.querySelectorAll('[data-schueler]').forEach(function (el) {
+    var an = el.getAttribute('data-schueler'), z = el.getAttribute('data-zahl');
+    SCH.forEach(function (r) { var s = h('span', r[0] === an ? 'an' : ''); s.appendChild(bunt(r, r[0] === z)); s.appendChild(document.createTextNode(r[2])); el.appendChild(s); });
+  });
+  document.querySelectorAll('.h-fuss[data-an]').forEach(function (el) {
+    var an = el.getAttribute('data-an'), z = el.getAttribute('data-zahl');
+    SCH.forEach(function (r) { var d = h('div', 'fi' + (r[0] === an ? ' an' : '')); d.appendChild(bunt(r, r[0] === z)); d.appendChild(document.createTextNode(r[3])); el.appendChild(d); });
+  });
+  var LEH = [['uebersicht','i-gitter','Übersicht'], ['pruefen','i-eingang','Zu prüfen','3'], ['nachweise','i-nachweis','Nachweise','1'], ['zeit','i-uhr','Zeitfenster'], ['kalender','i-kalender','Kalender'], ['pakete','i-buch','Pakete'], ['klassen','i-leute','Klassen']];
+  document.querySelectorAll('[data-lehrer]').forEach(function (el) {
+    var an = el.getAttribute('data-lehrer');
+    LEH.forEach(function (r) { var s = h('span', r[0] === an ? 'an' : ''); s.appendChild(ikon(r[1])); s.appendChild(document.createTextNode(r[2])); if (r[3]) { s.appendChild(document.createTextNode(' ')); s.appendChild(h('i', 'zahl', r[3])); } el.appendChild(s); });
+  });
+
+  function zelle(r, i) {
+    var t = TAGE[i], td = h('td', 't' + (t.heute ? ' heute' : '') + (t.aus ? ' aus' : '') + (t.ohne ? ' ohne' : ''));
+    if (t.aus) { td.title = t.aus; return td; }
+    if (t.ohne) td.title = t.ohne;
+    if (hat(r.geist, i)) td.appendChild(h('span', 'geist' + (hat(r.geist, i - 1) ? '' : ' a') + (hat(r.geist, i + 1) ? '' : ' e')));
+    if (hat(r.plan, i)) td.appendChild(h('span', 'bal' + (hat(r.plan, i - 1) ? '' : ' a') + (hat(r.plan, i + 1) ? '' : ' e')));
+    if (hat(r.ist, i)) td.appendChild(h('span', 'ist'));
+    if (r.frist === i) td.appendChild(h('span', 'frist', 'F'));
+    if (r.ampel && r.ampel[i]) td.appendChild(h('span', 'ak a-' + r.ampel[i]));
+    return td;
+  }
+
+  function raster(id, zeilen, mitMarken) {
+    var tab = document.getElementById(id); if (!tab) return;
+    var kopf = h('tr'); kopf.appendChild(h('th', 'links', 'Aufgabe')); kopf.appendChild(h('th', 'links', 'Stand'));
+    TAGE.forEach(function (t) {
+      var th = h('th', (t.heute ? 'heute' : '') + (t.aus ? ' aus' : '') + (t.ohne ? ' ohne' : ''));
+      th.appendChild(document.createTextNode(t.w)); th.appendChild(h('br')); th.appendChild(document.createTextNode(t.d));
+      if (t.aus) th.title = t.aus;
+      if (t.ohne) th.title = t.ohne;
+      kopf.appendChild(th);
+    });
+    var thead = h('thead'); thead.appendChild(kopf); tab.appendChild(thead);
+    var body = h('tbody');
+    zeilen.forEach(function (r) {
+      var tr = h('tr');
+      if (r.typ === 'paket' || r.typ === 'wahl' || r.typ === 'emp') {
+        tr.className = r.typ;
+        var td = h('td'); td.colSpan = TAGE.length + 2; td.appendChild(document.createTextNode(r.titel));
+        if (r.meta) td.appendChild(h('span', 'pm', r.meta));
+        tr.appendChild(td); body.appendChild(tr); return;
+      }
+      tr.className = [r.typ === 'nw' ? 'nw' : '', r.dim ? 'dim' : '', r.sel ? 'sel' : ''].join(' ').trim();
+      var a = h('td', 'auf');
+      if (r.kz) a.appendChild(h('span', 'kz', r.kz));
+      a.appendChild(h('span', r.ohneLink ? '' : 'alink', r.titel));
+      if (r.art) a.appendChild(h('span', 'art' + (r.verb ? ' verb' : ''), r.art));
+      if (mitMarken && r.marken) r.marken.forEach(function (m) { a.appendChild(h('span', 'd-tag ' + m[0], m[1])); });
+      tr.appendChild(a);
+      var st = h('td', 'st');
+      if (r.status) st.appendChild(h('span', 'sc ' + r.status[0], r.status[1]));
+      if (r.amp) st.appendChild(h('span', 'ampel a-' + r.amp));
+      if (r.knopf) { st.appendChild(document.createTextNode(' ')); st.appendChild(h('span', 'knopf-klein', r.knopf)); }
+      tr.appendChild(st);
+      for (var i = 0; i < TAGE.length; i++) tr.appendChild(zelle(r, i));
+      body.appendChild(tr);
+    });
+    tab.appendChild(body);
+  }
+
+  raster('raster-schueler', [
+    { typ:'paket', titel:'Elektropneumatik', meta:'LF 4 · Paket-Frist Do 03.12.' },
+    { typ:'auf', kz:'P1', titel:'Schaltzeichen nach DIN ISO 1219', art:'Pflicht', plan:[0], ist:[0], frist:1, status:['ok','angenommen'] },
+    { typ:'auf', kz:'P2', titel:'Zylinderkräfte berechnen', art:'Pflicht', plan:[1,2], ist:[1], frist:3, status:['arbeit','in Arbeit'], amp:'g', sel:true },
+    { typ:'wahl', titel:'Wahlgruppe A · Lernsituation · wähle 1 von 3', meta:'gewählt: A2' },
+    { typ:'auf', kz:'A2', titel:'Sortierweiche für Pakete', plan:[3,5], frist:7, status:['geplant','geplant'] },
+    { typ:'auf', kz:'A1', titel:'Stempelvorrichtung', dim:true, knopf:'wählen' },
+    { typ:'auf', kz:'A3', titel:'Biegevorrichtung', dim:true, knopf:'wählen' },
+    { typ:'auf', kz:'P3', titel:'Weg-Schritt-Diagramm erstellen', art:'Pflicht', plan:[6,7], frist:7, status:['geplant','geplant'] },
+    { typ:'nw', kz:'◆', titel:'Gelingensnachweis: Moodle-Test', plan:[8], frist:9, knopf:'Ich bin bereit' },
+    { typ:'emp', titel:'Empfohlen für dich', meta:'aus der Rückmeldung zu P1 · M. Göbel' },
+    { typ:'auf', kz:'Z2', titel:'Übung Betätigungsarten', art:'freiwillig', plan:[2], status:['geplant','geplant'] },
+    { typ:'auf', kz:'Z1', titel:'Druckluftverbrauch einer Anlage', art:'verbindlich', verb:true, plan:[6], frist:7, status:['geplant','geplant'] },
+    { typ:'paket', titel:'SPS-Grundlagen', meta:'LF 7 · freigegeben ab Mo 23.11.' },
+    { typ:'auf', kz:'S1', titel:'Ablaufsteuerung mit GRAFCET', art:'Pflicht', plan:[8,9], status:['geplant','geplant'] }
+  ], false);
+
+  raster('raster-verlauf', [
+    { typ:'paket', titel:'Elektropneumatik', meta:'LF 4 · Paket-Frist Do 03.12.' },
+    { typ:'auf', kz:'P1', titel:'Schaltzeichen', plan:[0], geist:[0], ist:[0], ampel:{0:'g'}, frist:1, status:['ok','angenommen'] },
+    { typ:'auf', kz:'P2', titel:'Zylinderkräfte', plan:[1,2], geist:[1], ist:[1], ampel:{1:'g'}, frist:3, status:['arbeit','in Arbeit'], amp:'g', marken:[['versch','verlängert']] },
+    { typ:'wahl', titel:'Wahlgruppe A · wähle 1 von 3', meta:'A1 am Do 05.11. gegen A2 getauscht' },
+    { typ:'auf', kz:'A2', titel:'Sortierweiche', plan:[3,5], frist:7, status:['geplant','geplant'], marken:[['neu','neu gewählt']] },
+    { typ:'auf', kz:'A1', titel:'Stempelvorrichtung', geist:[2,3], dim:true, status:['offen','abgewählt'], marken:[['weg','abgewählt']] },
+    { typ:'auf', kz:'P3', titel:'Weg-Schritt-Diagramm', plan:[6,7], geist:[3], frist:7, status:['geplant','geplant'], marken:[['versch','2× verschoben'],['aus','1× Ausfall']] },
+    { typ:'nw', kz:'◆', titel:'Moodle-Test', plan:[8], frist:9, status:['offen','Kann-Liste 2/5'] },
+    { typ:'emp', titel:'Empfehlungen', meta:'Mo 02.11. · M. Göbel' },
+    { typ:'auf', kz:'Z2', titel:'Übung Betätigungsarten', art:'freiwillig', status:['offen','nicht eingeplant'], marken:[['emp','empfohlen']] },
+    { typ:'auf', kz:'Z1', titel:'Druckluftverbrauch', art:'verbindlich', verb:true, plan:[6], frist:7, status:['geplant','geplant'], marken:[['emp','empfohlen']] }
+  ], true);
+
+  // Klassenmatrix
+  var mx = document.getElementById('matrix');
+  if (mx) {
+    var spalten = [['P1','Schaltz.'],['P2','Zylinder'],['A','Wahl 1/3'],['P3','Weg-Schritt'],['◆','Gelingen']];
+    var leute = [
+      ['Lena Krämer',   ['ok','✓'],['arb','◐'],['gepl','A2'],['gepl','▭'],['off','–'], 'g', true,  '2', ''],
+      ['Jonas Weber',   ['ok','✓'],['ok','✓'], ['arb','A1'], ['gepl','▭'],['off','–'], 'g', false, '–', ''],
+      ['Mehmet Yilmaz', ['ok','✓'],['gem','P2'],['arb','A1'],['off','–'], ['off','–'], 'y', true,  '1', ''],
+      ['Tim Schäfer',   ['ok','✓'],['ok','✓'], ['ok','A3'],  ['gem','P3'],['bereit','bereit'], 'g', false, '–', ''],
+      ['Sarah Hoffmann',['ueb','↺'],['gepl','▭'],['fehlt','?'],['off','–'],['off','–'], 'r', false, '1', 'Wahlgruppe A noch nicht gewählt'],
+      ['Paul Becker',   ['gem','P1'],['off','–'],['gepl','A2'],['off','–'], ['off','–'], '0', false, '–', 'plant P2 nach der Frist'],
+      ['Nico Wagner',   ['ok','✓'],['ok','✓'], ['ok','A2'],  ['ok','✓'],  ['erg','gelungen'], 'g', false, '–', ''],
+      ['Elif Demir',    ['ok','✓'],['arb','◐'],['gepl','A3'],['gepl','▭'],['off','–'], '0', false, '–', 'Ampel P2 älter als 1 Woche']
+    ];
+    var thead = h('thead'), kr = h('tr');
+    kr.appendChild(h('th', 'links', 'Schüler'));
+    spalten.forEach(function (s) { var th = h('th'); th.appendChild(h('span', 'kz', s[0])); th.appendChild(document.createTextNode(s[1])); kr.appendChild(th); });
+    kr.appendChild(h('th', null, 'Ampel')); kr.appendChild(h('th', null, 'Hilfe')); kr.appendChild(h('th', null, 'Emp.')); kr.appendChild(h('th', 'links', 'Hinweis'));
+    thead.appendChild(kr); mx.appendChild(thead);
+    var tb = h('tbody');
+    leute.forEach(function (p) {
+      var tr = h('tr'); tr.appendChild(h('td', 'name', p[0]));
+      for (var i = 1; i <= 5; i++) { var td = h('td'); td.appendChild(h('span', 'mz ' + p[i][0], p[i][1])); tr.appendChild(td); }
+      var ta = h('td'); ta.appendChild(h('span', 'ampel a-' + p[6])); tr.appendChild(ta);
+      var th2 = h('td'); if (p[7]) th2.appendChild(h('span', 'hilfe-marke', '?')); tr.appendChild(th2);
+      tr.appendChild(h('td', null, p[8]));
+      tr.appendChild(h('td', 'hin' + (p[9] ? ' w' : ''), p[9] || '–'));
+      tb.appendChild(tr);
+    });
+    mx.appendChild(tb);
+  }
+
+  // Kalender Halbjahr (Ausschnitt KW 45 bis KW 53)
+  var kal = document.getElementById('kalender');
+  if (kal) {
+    var EV = {
+      '02.11.': [['info','Elektropneumatik frei']],
+      '05.11.': [['frist','Frist P1']],
+      '10.11.': [['dienst','14:00 Gesamtkonferenz']],
+      '12.11.': [['sz','09:30 Sprechzeit 2/4'],['sz n','10:15 Prüfungszeit'],['frist','Frist P2']],
+      '16.11.': [['aus','Ausfall: Zwischenprüfung']],
+      '19.11.': [['sz','09:30 Sprechzeit 0/4']],
+      '23.11.': [['info','SPS-Grundlagen frei']],
+      '25.11.': [['dienst','Elternsprechtag']],
+      '26.11.': [['sz','09:30 Sprechzeit'],['frist','Frist Wahl A, P3, Z1']],
+      '30.11.': [['ohne','ohne Sie: Fortbildung'],['dienst','Fortbildung Koblenz']],
+      '01.12.': [['dienst','15:00 Fachkonferenz MT']],
+      '03.12.': [['gn','GN Moodle-Test'],['frist','Paket-Frist EP']],
+      '10.12.': [['sz n','10:15 Prüfungszeit']],
+      '17.12.': [['sz n','10:15 Prüfungszeit'],['gn','GN Fachgespräch SPS']],
+      '23.12.': [['aus','Weihnachtsferien']]
+    };
+    var start = new Date(2026, 10, 2);
+    function zz(n) { return (n < 10 ? '0' : '') + n; }
+    var thead = h('thead'), kr = h('tr');
+    kr.appendChild(h('th', 'kw', 'KW'));
+    ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag'].forEach(function (n) { kr.appendChild(h('th', null, n)); });
+    thead.appendChild(kr); kal.appendChild(thead);
+    var tb = h('tbody');
+    for (var w = 0; w < 9; w++) {
+      var tr = h('tr'); tr.appendChild(h('td', 'kw', 'KW ' + (45 + w)));
+      for (var d = 0; d < 5; d++) {
+        var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
+        var key = zz(dt.getDate()) + '.' + zz(dt.getMonth() + 1) + '.';
+        var ferien = dt >= new Date(2026, 11, 23);
+        var aus = key === '16.11.';
+        var ut = (d === 0 || d === 3) && !ferien && !aus;
+        var td = h('td', (ut ? 'ut' : '') + (ferien || aus ? ' fer' : '') + (key === '05.11.' ? ' heute' : ''));
+        td.appendChild(h('span', 'tagnr', key + (ut ? ' · Lernbüro' : '')));
+        (EV[key] || []).forEach(function (e) { td.appendChild(h('span', 'ev ' + e[0], e[1])); });
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+    kal.appendChild(tb);
+  }
+
+  // Diktat-Welle
+  var w = document.getElementById('welle');
+  if (w) { for (var i = 0; i < 46; i++) { var b = h('i'); var v = Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.23)); b.style.height = (4 + Math.round(v * 24)) + 'px'; w.appendChild(b); } }
+
+  // Beispiel-QR (nur Optik, kein echter Code)
+  var NS = 'http://www.w3.org/2000/svg';
+  document.querySelectorAll('svg.qr').forEach(function (svg) {
+    var s = parseInt(svg.getAttribute('data-saat'), 10) || 1;
+    function zufall() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+    function r(x, y, wd, ht, f) { var e = document.createElementNS(NS, 'rect'); e.setAttribute('x', x); e.setAttribute('y', y); e.setAttribute('width', wd); e.setAttribute('height', ht); e.setAttribute('fill', f); svg.appendChild(e); }
+    r(0, 0, 25, 25, '#ffffff');
+    function auge(x, y) { r(x, y, 7, 7, '#1d2433'); r(x + 1, y + 1, 5, 5, '#ffffff'); r(x + 2, y + 2, 3, 3, '#1d2433'); }
+    for (var y = 0; y < 25; y++) for (var x = 0; x < 25; x++) {
+      var imAuge = (x < 8 && y < 8) || (x > 16 && y < 8) || (x < 8 && y > 16);
+      if (!imAuge && zufall() > 0.52) r(x, y, 1, 1, '#1d2433');
+    }
+    auge(0, 0); auge(18, 0); auge(0, 18);
+  });
+})();
+</script>
