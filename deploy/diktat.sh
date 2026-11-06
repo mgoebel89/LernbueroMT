@@ -11,7 +11,7 @@ set -euo pipefail
 UMGEBUNG=/opt/lernbuero-whisper
 MODELLE=/var/lib/lernbuero/whisper
 MODELL="${LERNBUERO_DIKTAT_MODELL:-$(cat "$MODELLE/modell" 2>/dev/null || echo small)}"
-VERSION="faster-whisper==1.1.1"
+PAKETE="faster-whisper==1.1.1 huggingface_hub<1.0 requests"   # passend zu faster-whisper 1.1.1 (huggingface_hub 1.x/2.x ohne requests)
 
 if [ -x "$UMGEBUNG/bin/python" ] && "$UMGEBUNG/bin/python" -c 'import faster_whisper' 2>/dev/null \
     && [ -f "$MODELLE/fertig-$MODELL" ]; then
@@ -27,7 +27,7 @@ if ! python3 -c 'import ensurepip, venv' 2>/dev/null; then
 fi
 [ -x "$UMGEBUNG/bin/python" ] || python3 -m venv "$UMGEBUNG"
 "$UMGEBUNG/bin/pip" install -q --disable-pip-version-check --upgrade pip >/dev/null
-"$UMGEBUNG/bin/pip" install -q --disable-pip-version-check "$VERSION"
+"$UMGEBUNG/bin/pip" install -q --disable-pip-version-check $PAKETE
 chown -R root:root "$UMGEBUNG"
 chmod -R go-w "$UMGEBUNG"
 
