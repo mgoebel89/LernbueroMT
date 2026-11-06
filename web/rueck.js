@@ -113,7 +113,7 @@ const Rueck = (() => {
     const text = el('textarea', { rows: 6, maxlength: 6000, readonly: lesen || null, placeholder: 'Rückmeldung für ' + v.schueler.vorname + ' …' });
     text.value = e ? e.text : '';
     const textWerkzeug = lesen ? null : el('div', { class: 'zeile' },
-      window.Diktat ? Diktat.knopf(text, v) : null,
+      typeof Diktat !== 'undefined' ? Diktat.knopf(text, v) : null,
       el('button', { type: 'button', class: 'klein', onclick: () => { text.value = fuellwoerter(text.value); }, text: 'Füllwörter entfernen' }));
 
     // Empfehlungen

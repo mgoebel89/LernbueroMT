@@ -367,3 +367,5 @@ td.abweichung { color: var(--rot); font-weight: 700; }
 .slot.gebucht { background: var(--blau-hell); }
 .slot.puffer { color: var(--leise); font-size: .74rem; padding: 1px 6px; background: repeating-linear-gradient(135deg, transparent 0 4px, var(--bg) 4px 7px); }
 .slot .rechts { display: flex; gap: 4px; }
+button.diktat.laeuft { background: var(--rot); border-color: var(--rot); color: #fff; }
+.diktat-hinweis { max-width: 520px; }

@@ -253,5 +253,18 @@ class Zeitfenster(Basis):
         self.assertEqual([(t["anlass"], t["von_lehrkraft_abgesagt"]) for t in meine], [("Paket Elektropneumatik", True)])
 
 
+class Diktat(Basis):
+    def test_ohne_whisper_und_fachwoerter(self):
+        from app import diktat
+        with mock.patch.object(diktat, "UMGEBUNG", self.ordner + "/gibtsnicht"):
+            self.assertFalse(diktat.stand(self.ordner)["verfuegbar"])
+            with self.assertRaisesRegex(diktat.DiktatFehler, "nicht eingerichtet"):
+                diktat.erkennen(self.ordner, b"x", "audio/webm")
+        w = diktat.fachwoerter(self.con, self.pid)
+        self.assertIn("Zylinderkräfte", w)
+        self.assertIn("Wegeventile benennen", w)
+        self.assertEqual(diktat.fachwoerter(self.con, None), "")
+
+
 if __name__ == "__main__":
     unittest.main()

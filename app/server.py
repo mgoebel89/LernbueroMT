@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import VERSION, db, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, rueckmeldung, termine, unterrichtstage, updates
+from . import VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, rueckmeldung, termine, unterrichtstage, updates
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -199,7 +199,7 @@ class Handler(BaseHTTPRequestHandler):
             for m, muster, funktion in ROUTEN:
                 treffer = muster.fullmatch(pfad)
                 if m == methode and treffer:
-                    daten = self.body() if methode == "POST" else {}
+                    daten = self.body() if methode == "POST" and funktion not in ROH else {}
                     return funktion(self, con, daten, *treffer.groups())
             if methode == "POST":
                 self.body()
@@ -210,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
             self.antwort(403, {"fehler": str(f)})
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
                 unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
-                rueckmeldung.RueckmeldungFehler, termine.TerminFehler) as f:
+                rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -808,6 +808,26 @@ def api_zeitfenster_entfernen(h, con, daten, zid):
     h.antwort(200, {"abgesagt": n})
 
 
+def api_diktat_stand(h, con, daten):
+    h.konto(con)
+    h.antwort(200, diktat.stand(DATEN_DIR))
+
+
+def api_diktat(h, con, daten):
+    """Aufnahme als Rohdaten (audio/webm, audio/mp4 ...), nicht als JSON. Die Aufnahme wird nach dem Erkennen geloescht."""
+    laenge = _ganzzahl(h.headers.get("Content-Length") or 0)
+    if laenge > diktat.MAX_BYTES:
+        raise Fehler(413, "Die Aufnahme ist zu lang. Bitte in mehreren Teilen diktieren.")
+    roh = h.rfile.read(laenge) if laenge else b""
+    if h.headers.get(KOPF) != "1":
+        raise Fehler(403, "Anfrage abgelehnt.")
+    h.konto(con)
+    paket = h.abfrage("paket")
+    vorgabe = diktat.fachwoerter(con, _ganzzahl(paket)) if paket else ""
+    con.close()   # das Erkennen dauert: die Datenbank solange nicht offen halten
+    h.antwort(200, diktat.erkennen(DATEN_DIR, roh, h.headers.get("Content-Type"), vorgabe))
+
+
 def api_termin_absagen(h, con, daten, tid):
     k = h.konto(con)
     with db.transaktion(con):
@@ -864,6 +884,8 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("POST", r"/api/klassen/(\d+)/zeitfenster", api_zeitfenster_anlegen),
     ("POST", r"/api/zeitfenster/(\d+)/entfernen", api_zeitfenster_entfernen),
     ("POST", r"/api/termine/(\d+)/absagen", api_termin_absagen),
+    ("GET", r"/api/diktat", api_diktat_stand),
+    ("POST", r"/api/diktat", api_diktat),
     ("GET", r"/api/klassen/(\d+)/matrix", api_matrix),
     ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/plan", api_schuelerplan),
     ("GET", r"/api/status", api_status),
@@ -918,6 +940,9 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("POST", r"/api/pakete/(\d+)/nachweise/(\d+)", _paket_schritt(pakete.nachweis_aendern)),
     ("POST", r"/api/pakete/(\d+)/kopieren", api_paket_kopieren),
 ]]
+
+
+ROH = {api_diktat}   # lesen ihren Inhalt selbst (kein JSON)
 
 
 # --- HTTP neben HTTPS: nur die Schuelerseiten ---

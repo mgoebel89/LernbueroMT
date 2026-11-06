@@ -7,7 +7,7 @@
 # Dienste: lernbuero (Webseite 80/443), lernbuero-tls.timer (Zertifikat), lernbuero-firewall (nur 22/80/443),
 # lernbuero-update-pruefen.timer/.path und lernbuero-update-ausfuehren.path (Update aus dem Lehrerbereich).
 # Befehle danach: lernbuero (Konsole, z.B. lernbuero einrichtungscode), lernbuero-update.
-# Die Spracherkennung (Whisper) kommt mit Stufe D dazu.
+# Spracherkennung fuer das Diktat: deploy/diktat.sh (faster-whisper in /opt/lernbuero-whisper, Modell in /var/lib/lernbuero/whisper).
 set -euo pipefail
 ZIEL=/opt/lernbuero
 DATEN=/var/lib/lernbuero
@@ -38,6 +38,13 @@ install -d -o root -g root -m 755 /etc/lernbuero
 # der Code gehoert root: der Webdienst kann ihn nicht veraendern
 chown -R root:root "$ZIEL"
 chmod -R go-w "$ZIEL"
+
+echo "==> Diktat (Whisper)"
+if [ "${LERNBUERO_OHNE_DIKTAT:-}" = 1 ]; then
+  echo "    Diktat: uebersprungen (LERNBUERO_OHNE_DIKTAT=1)"
+else
+  bash deploy/diktat.sh || echo "    Diktat: Einrichtung fehlgeschlagen, alles andere laeuft. Spaeter erneut: bash $ZIEL/deploy/diktat.sh"
+fi
 
 echo "==> Befehle, Dienste, Firewall"
 install -o root -g root -m 755 deploy/tls.sh /usr/local/sbin/lernbuero-tls
