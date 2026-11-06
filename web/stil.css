@@ -1,0 +1,182 @@
+/* Lernbüro MT: Gestaltung nach dem Corporate Design der David-Roentgen-Schule wie im TrackingDRS (DRS-Blau, Akzente
+   Gruen, Gelb, Pink; Flaechen mit EINER grossen Ecke oben links; blaues Dreieck vor Ueberschriften). Ohne externe
+   Schriften: die Seite laeuft im Schulnetz. Schuelerbereiche mit festen Farben und Symbolen (Konzept Fassung 2). */
+:root {
+  --blau: #00639C; --blau-dunkel: #004d7a; --blau-mittel: #7fb1cf; --blau-hell: #e8f2f9;
+  --gruen: #9fb400; --gelb: #F8B442; --rot: #D4005E; --rot-hell: #fbe8f0; --lila: #7B4FA0;
+  --bg: #f4f6f8; --karte: #fff; --text: #1d2433; --leise: #5d6779; --linie: #e4e7ec; --linie-stark: #cfd4dc; --knopf: #f2f4f7;
+  --ecke: 16px; --r: 8px;
+  --schatten-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --schatten-3: 0 20px 40px -12px rgba(16,24,40,.28);
+  --schrift: 'DIN Pro', 'Segoe UI Variable Text', 'Segoe UI', Calibri, system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --mono: 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: var(--schrift); font-size: 15px; line-height: 1.45; background: var(--bg); color: var(--text);
+  -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { line-height: 1.2; margin: 0; text-wrap: balance; }
+h1 { font-size: 1.5rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1rem; }
+p { margin: 0; }
+a { color: var(--blau); }
+.leise { color: var(--leise); }
+.klein { font-size: .85em; }
+.mono { font-family: var(--mono); font-size: .9em; }
+
+/* Kopfzeile */
+header.kopf { background: var(--karte); border-bottom: 2px solid var(--blau); box-shadow: var(--schatten-1);
+  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; min-height: 56px;
+  padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); position: sticky; top: 0; z-index: 20; }
+.marke { display: flex; align-items: center; gap: 10px; color: var(--blau); font-weight: 700; font-size: 1.15rem; text-decoration: none; white-space: nowrap; }
+.marke svg { width: 18px; height: 18px; fill: var(--blau); }
+.kopf .unter { color: var(--leise); font-weight: 600; padding-left: 12px; border-left: 1px solid var(--linie); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kopf .rechts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* Bedienelemente */
+button, .knopf { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: .9em; font-weight: 600;
+  line-height: 1.2; padding: 8px 14px; border-radius: var(--r); border: 1px solid var(--linie-stark); background: var(--karte); color: var(--text);
+  cursor: pointer; text-decoration: none; white-space: nowrap; min-height: 36px; transition: background .15s, border-color .15s, color .15s; }
+button:hover, .knopf:hover { border-color: var(--blau-mittel); color: var(--blau); background: var(--blau-hell); }
+button:focus-visible, .knopf:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: none; box-shadow: 0 0 0 3px var(--blau-hell), 0 0 0 4px var(--blau-mittel); }
+button.haupt, .knopf.haupt { background: var(--blau); border-color: var(--blau); color: #fff; }
+button.haupt:hover, .knopf.haupt:hover { background: var(--blau-dunkel); border-color: var(--blau-dunkel); color: #fff; }
+button.warnen { color: var(--rot); border-color: #f0b7cf; }
+button.warnen:hover { background: var(--rot); border-color: var(--rot); color: #fff; }
+button.leicht { border-color: transparent; background: transparent; }
+button.klein, .knopf.klein { min-height: 28px; padding: 3px 9px; font-size: .8em; }
+button:disabled { opacity: .5; cursor: default; }
+.symbol { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+input, select, textarea { font: inherit; font-size: .95em; padding: 7px 10px; border: 1px solid var(--linie-stark); border-radius: var(--r);
+  background: var(--karte); color: var(--text); min-height: 38px; width: 100%; }
+textarea { min-height: 90px; resize: vertical; }
+input[type=checkbox], input[type=radio] { width: 18px; height: 18px; min-height: 0; accent-color: var(--blau); flex: none; }
+input[type=file] { padding: 6px; }
+label.feld { display: grid; gap: 4px; color: var(--leise); font-size: .85em; font-weight: 600; }
+label.feld > span.hilfe { font-weight: 400; }
+.felder { display: grid; gap: 12px; }
+.felder.zwei { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.haken { display: flex; gap: 8px; align-items: center; font-weight: 500; color: var(--text); font-size: .95em; }
+
+/* Flaechen */
+.karte { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--ecke) 6px 6px 6px; padding: 16px 18px; min-width: 0; }
+.karte > h2, .karte > h3 { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.dreieck::before { content: ""; display: inline-block; width: .7em; height: .7em; background: var(--blau);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%); margin-right: 2px; }
+.raster { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.zwei-spalten { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+.stapel { display: grid; gap: 16px; }
+.zeile { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.zeile .rechts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: .8em; font-weight: 600;
+  background: var(--knopf); border: 1px solid var(--linie); white-space: nowrap; }
+.chip.blau { background: var(--blau-hell); border-color: var(--blau-mittel); color: var(--blau); }
+.chip.rot { background: var(--rot-hell); border-color: #f0b7cf; color: var(--rot); }
+.chip.gruen { background: #f2f7d9; border-color: #d4e08a; color: #5c6a00; }
+.chip.gelb { background: #fdf1dc; border-color: var(--gelb); color: #7a4f00; }
+.etikett { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--leise); }
+table.liste { width: 100%; border-collapse: collapse; font-size: .92em; }
+table.liste th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--leise); font-weight: 700;
+  padding: 6px 8px; border-bottom: 1px solid var(--linie-stark); white-space: nowrap; }
+table.liste td { padding: 8px; border-bottom: 1px solid var(--linie); vertical-align: middle; }
+table.liste tr:last-child td { border-bottom: none; }
+table.liste tr.aus td { color: var(--leise); }
+table.liste td.knoepfe { text-align: right; white-space: nowrap; }
+.rollbar { overflow-x: auto; }
+.leer { padding: 28px 16px; text-align: center; color: var(--leise); border: 1px dashed var(--linie-stark); border-radius: var(--ecke) 6px 6px 6px; }
+.banner { background: var(--blau-hell); border: 1px solid var(--blau-mittel); border-radius: 10px 4px 4px 4px; padding: 8px 12px; font-size: .9em; }
+.banner.warnung { background: var(--rot-hell); border-color: #f0b7cf; }
+.code-text { font-family: var(--mono); font-weight: 700; letter-spacing: .06em; }
+
+/* Lehrerbereich: Seitenleiste */
+.rahmen { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 58px); }
+nav.seite { background: var(--karte); border-right: 1px solid var(--linie); padding: 14px 10px; display: grid; gap: 2px; align-content: start; }
+nav.seite a { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border-radius: var(--r); color: var(--text);
+  text-decoration: none; font-weight: 600; font-size: .95em; }
+nav.seite a:hover { background: var(--knopf); }
+nav.seite a.an { background: var(--blau-hell); color: var(--blau); }
+main.inhalt { padding: 20px max(16px, env(safe-area-inset-right)) 40px 24px; min-width: 0; display: grid; gap: 16px; align-content: start; }
+.werkzeug { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.werkzeug h1 { margin-right: auto; }
+.klassenkarte { display: grid; gap: 8px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+.klassenkarte:hover { border-color: var(--blau-mittel); box-shadow: var(--schatten-1); }
+.klassenkarte h3 { font-size: 1.15rem; }
+.personen { display: flex; flex-wrap: wrap; gap: 6px; }
+.person { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--linie); background: var(--bg); border-radius: 999px;
+  padding: 2px 4px 2px 10px; font-size: .88em; }
+.person button { min-height: 24px; padding: 0 6px; border: none; background: none; color: var(--leise); }
+.qr-bild { width: 180px; height: 180px; display: block; image-rendering: pixelated; border: 1px solid var(--linie); border-radius: 6px; }
+@media (max-width: 760px) {
+  .rahmen { grid-template-columns: 1fr; }
+  nav.seite { display: flex; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--linie); padding: 6px; }
+  nav.seite a { white-space: nowrap; }
+  main.inhalt { padding-left: max(16px, env(safe-area-inset-left)); }
+}
+
+/* Overlays: am PC Fenster in der Mitte, am Handy Blatt von unten */
+dialog { border: 1px solid var(--linie-stark); border-radius: var(--ecke) 8px 8px 8px; padding: 0; width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px); box-shadow: var(--schatten-3); color: var(--text); }
+dialog.breit { width: min(900px, calc(100vw - 24px)); }
+dialog::backdrop { background: rgba(16, 24, 40, .38); }
+dialog form { display: grid; gap: 14px; padding: 18px 20px; }
+dialog .knoepfe { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; background: var(--karte);
+  padding-top: 6px; }
+@media (max-width: 560px) {
+  dialog { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 18px 18px 0 0; max-height: 88vh; }
+  dialog form { padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+  dialog .knoepfe { display: grid; grid-template-columns: 1fr 1.6fr; }
+}
+.fehlertext { color: var(--rot); font-weight: 600; font-size: .9em; }
+.fehlertext:empty { display: none; }
+#meldungen { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); display: grid; gap: 8px; z-index: 50; }
+.meldung { background: var(--text); color: #fff; padding: 10px 14px; border-radius: 10px 4px 4px 4px; box-shadow: var(--schatten-3); font-size: .92em; max-width: 360px; }
+.meldung.fehler { background: var(--rot); }
+
+/* Anmeldung, Einrichtung, Code-Eingabe */
+.mitte { max-width: 420px; margin: 56px auto; padding: 0 16px; }
+.mitte .karte { padding: 26px 28px; display: grid; gap: 16px; }
+.code { font-family: var(--mono); letter-spacing: .12em; text-transform: uppercase; font-size: 1.3rem; text-align: center; }
+
+/* Schuelerbereich: feste Farbe und festes Symbol je Bereich; PC links eine Leiste, Handy unten */
+.ik { width: 42px; height: 42px; border-radius: 13px; display: inline-grid; place-items: center; color: #fff; flex: none; position: relative; }
+.ik .symbol { width: 22px; height: 22px; }
+.ik.plan { background: var(--blau); } .ik.heute { background: var(--gelb); color: #1d2433; } .ik.kann { background: var(--gruen); color: #1d2433; }
+.ik.rueck { background: var(--blau-mittel); } .ik.gn { background: var(--lila); }
+.ik .zahl { position: absolute; top: -6px; right: -9px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--rot);
+  color: #fff; font-size: .72rem; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px var(--karte); }
+.s-rahmen { display: grid; grid-template-columns: 100px minmax(0, 1fr); min-height: calc(100vh - 58px); }
+nav.schiene { background: var(--karte); border-right: 1px solid var(--linie); display: flex; flex-direction: column; gap: 4px; padding: 10px 6px;
+  position: sticky; top: 58px; height: calc(100vh - 58px); }
+nav.schiene a { display: grid; justify-items: center; gap: 5px; padding: 9px 2px 8px; border-radius: 12px; font-size: .72rem; font-weight: 600;
+  color: var(--leise); text-align: center; line-height: 1.2; text-decoration: none; }
+nav.schiene a:hover { background: var(--knopf); color: var(--text); }
+nav.schiene a.an { background: var(--blau-hell); color: var(--text); font-weight: 700; }
+nav.schiene a.an .ik { box-shadow: 0 0 0 2px var(--karte), 0 0 0 4px var(--text); }
+.hilfe-knopf { margin-top: auto; display: grid; justify-items: center; gap: 5px; padding: 9px 2px; border-radius: 12px; border: 2px solid var(--rot);
+  color: var(--rot); background: var(--karte); font: inherit; font-size: .72rem; font-weight: 700; text-align: center; white-space: normal; line-height: 1.2; }
+.hilfe-knopf .symbol { width: 26px; height: 26px; }
+.hilfe-knopf:hover { background: var(--rot-hell); color: var(--rot); border-color: var(--rot); }
+.s-inhalt { padding: 20px max(16px, env(safe-area-inset-right)) 40px 22px; min-width: 0; display: grid; gap: 16px; align-content: start; max-width: 1100px; }
+@media (max-width: 760px) {
+  .s-rahmen { grid-template-columns: 1fr; }
+  nav.schiene { position: fixed; top: auto; left: 0; right: 0; bottom: 0; height: auto; z-index: 40; flex-direction: row; border-right: none;
+    border-top: 1px solid var(--linie); padding: 6px max(4px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+    box-shadow: 0 -4px 16px rgba(16,24,40,.08); }
+  nav.schiene a { flex: 1 1 0; padding: 4px 0; font-size: .62rem; }
+  nav.schiene .ik { width: 32px; height: 32px; border-radius: 10px; }
+  nav.schiene .ik .symbol { width: 18px; height: 18px; }
+  nav.schiene .lang { display: none; }
+  .hilfe-knopf.schiene-hilfe { display: none; }
+  .s-inhalt { padding: 16px max(16px, env(safe-area-inset-right)) 100px max(16px, env(safe-area-inset-left)); }
+  .hilfe-gross { display: flex !important; }
+}
+@media (min-width: 761px) { nav.schiene .kurz { display: none; } }
+.hilfe-gross { display: none; align-items: center; justify-content: center; gap: 10px; padding: 14px; border-radius: 14px 6px 6px 6px;
+  border: 2px solid var(--rot); color: var(--rot); background: var(--karte); font: inherit; font-weight: 700; font-size: 1.1rem; width: 100%; }
+.hilfe-gross .symbol { width: 24px; height: 24px; }
+.platzhalter { display: grid; gap: 10px; justify-items: start; }
+.platzhalter .ik { width: 56px; height: 56px; border-radius: 16px; }
+.platzhalter .ik .symbol { width: 30px; height: 30px; }

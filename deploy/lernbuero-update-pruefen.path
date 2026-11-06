@@ -1,0 +1,10 @@
+# Knopf "Jetzt pruefen" im Lehrerbereich: der Webdienst legt /var/lib/lernbuero/update/pruefen an.
+[Unit]
+Description=LernbueroMT: Pruefung auf Knopfdruck
+
+[Path]
+PathExists=/var/lib/lernbuero/update/pruefen
+Unit=lernbuero-update-pruefen.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Einrichtung · Lernbüro MT</title>
+<link rel="stylesheet" href="/static/stil.css">
+<link rel="icon" href="/static/symbol.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="kopf">
+  <a class="marke" href="/"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 10 L10 0 L10 10 Z"/></svg>Lernbüro MT</a><span class="unter">Einrichtung</span></header>
+<div class="mitte">
+  <form class="karte" id="einrichtung">
+    <h1 class="dreieck">Erstes Admin-Konto</h1>
+    <p class="leise">Den Einrichtungscode zeigt die Konsole des Containers mit <span class="mono">lernbuero einrichtungscode</span>.</p>
+    <label class="feld">Einrichtungscode<input id="code" class="code" autocomplete="off" autocapitalize="characters" required placeholder="A1B2-C3D4-E5F6"></label>
+    <label class="feld">Kürzel<input id="kuerzel" autocomplete="username" autocapitalize="none" required placeholder="gob"></label>
+    <label class="feld">Name<input id="name" autocomplete="name" required placeholder="Matthias Göbel"></label>
+    <label class="feld">Passwort<input id="passwort" type="password" autocomplete="new-password" minlength="8" required><span class="hilfe">mindestens 8 Zeichen</span></label>
+    <div class="fehlertext" id="fehler" role="alert"></div>
+    <button class="haupt" type="submit">Konto anlegen</button>
+  </form>
+</div>
+<script src="/static/gemeinsam.js"></script>
+<script src="/static/einrichtung.js"></script>
+</body>
+</html>

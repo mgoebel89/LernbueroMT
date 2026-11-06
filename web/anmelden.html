@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anmelden · Lernbüro MT</title>
+<link rel="stylesheet" href="/static/stil.css">
+<link rel="icon" href="/static/symbol.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="kopf">
+  <a class="marke" href="/"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 10 L10 0 L10 10 Z"/></svg>Lernbüro MT</a></header>
+<div class="mitte">
+  <form class="karte" id="anmelden">
+    <h1 class="dreieck">Anmelden</h1>
+    <p class="leise">Für Lehrkräfte. Schülerinnen und Schüler öffnen ihren Plan mit dem QR-Code von ihrer Karte.</p>
+    <label class="feld">Kürzel<input id="kuerzel" name="kuerzel" autocomplete="username" autocapitalize="none" required></label>
+    <label class="feld">Passwort<input id="passwort" name="passwort" type="password" autocomplete="current-password" required></label>
+    <div class="fehlertext" id="fehler" role="alert"></div>
+    <button class="haupt" type="submit">Anmelden</button>
+  </form>
+</div>
+<script src="/static/gemeinsam.js"></script>
+<script src="/static/anmelden.js"></script>
+</body>
+</html>

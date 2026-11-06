@@ -1,0 +1,7 @@
+# Zertifikat fuer HTTPS pruefen und bei Bedarf erneuern (laeuft per lernbuero-tls.timer jede Woche)
+[Unit]
+Description=LernbueroMT HTTPS-Zertifikat erneuern
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lernbuero-tls --neustart

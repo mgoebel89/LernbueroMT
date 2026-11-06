@@ -1,0 +1,30 @@
+# Lernbüro MT Webseite: https://<container> (Port 443, Lehrerbereich), http (Port 80) fuer die Schuelerseiten und /ca.crt.
+[Unit]
+Description=Lernbuero MT Webseite
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lernbuero
+Group=lernbuero
+WorkingDirectory=/opt/lernbuero
+Environment=LERNBUERO_DATEN=/var/lib/lernbuero
+Environment=PYTHONUNBUFFERED=1
+# Zertifikat vor jedem Start pruefen bzw. erneuern; "+" = als root, "-" = Fehler stoppt den Start nicht (dann HTTP)
+ExecStartPre=-+/usr/local/sbin/lernbuero-tls
+ExecStart=/usr/bin/python3 -m app.server
+Restart=always
+RestartSec=5
+# Ports 80/443 ohne root, sonst kaum Rechte
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+# neue Dateien (Datenbank) nur fuer den Dienst lesbar
+UMask=0027
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lernbuero
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

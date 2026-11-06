@@ -1,0 +1,20 @@
+#!/usr/sbin/nft -f
+# Lernbüro MT: Firewall im Container (install.sh legt sie als /etc/lernbuero/firewall.nft ab, lernbuero-firewall.service
+# laedt sie beim Start). Von aussen nur Webseite (80 fuer die Schuelerseiten, 443 fuer den Lehrerbereich) und SSH.
+# Ausgehende Verbindungen (Updates, Kalender-Abos) und ihre Antworten bleiben frei.
+# Eigene Tabelle: andere Regeln im Container bleiben unberuehrt.
+table inet lernbuero
+delete table inet lernbuero
+table inet lernbuero {
+	chain eingang {
+		type filter hook input priority filter; policy drop;
+		iif "lo" accept
+		ct state established,related accept
+		ct state invalid drop
+		meta l4proto { icmp, ipv6-icmp } accept
+		tcp dport { 22, 80, 443 } accept
+	}
+	chain weiter {
+		type filter hook forward priority filter; policy drop;
+	}
+}

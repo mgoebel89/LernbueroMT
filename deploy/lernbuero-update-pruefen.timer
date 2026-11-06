@@ -1,0 +1,12 @@
+# Einmal am Tag nach einer neuen Version suchen (installiert wird nur auf Knopfdruck).
+[Unit]
+Description=LernbueroMT: taeglich nach neuer Version suchen
+
+[Timer]
+OnCalendar=*-*-* 06:00
+RandomizedDelaySec=2h
+Persistent=true
+Unit=lernbuero-update-pruefen.service
+
+[Install]
+WantedBy=timers.target

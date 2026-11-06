@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lernbüro MT</title>
+<link rel="stylesheet" href="/static/stil.css">
+<link rel="icon" href="/static/symbol.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="kopf">
+  <a class="marke" href="/"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 10 L10 0 L10 10 Z"/></svg>Lernbüro MT</a></header>
+<div class="mitte">
+  <form class="karte" id="code-form">
+    <h1 class="dreieck">Mein Lernplan</h1>
+    <p class="leise">Scanne den QR-Code auf deiner Karte mit der Kamera. Oder tippe den Code von der Karte hier ein.</p>
+    <label class="feld">Code von deiner Karte<input id="code" class="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="K7Q4-M2XD" maxlength="9"></label>
+    <div class="fehlertext" id="fehler" role="alert"></div>
+    <button class="haupt" type="submit">Öffnen</button>
+    <p class="leise klein">Lehrkräfte: <a id="lehrer-link" href="/anmelden">Anmelden</a></p>
+  </form>
+</div>
+<script src="/static/gemeinsam.js"></script>
+<script src="/static/start.js"></script>
+</body>
+</html>

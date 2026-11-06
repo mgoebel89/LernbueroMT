@@ -1,0 +1,14 @@
+# Firewall von Lernbüro MT (Regeln: /etc/lernbuero/firewall.nft). Abschalten: systemctl disable --now lernbuero-firewall
+[Unit]
+Description=Lernbuero MT Firewall (von aussen nur Webseite und SSH)
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/lernbuero/firewall.nft
+ExecStop=/usr/sbin/nft delete table inet lernbuero
+
+[Install]
+WantedBy=multi-user.target
