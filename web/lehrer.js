@@ -216,7 +216,8 @@ async function nachweiseZeigen() {
 function eingangZeile(m) {
   return el('div', { class: 'jz' }, el('span', { class: 'mono kz-blau', text: m.kuerzel }),
     el('div', {}, el('b', { text: m.name }), el('div', { class: 'leise klein', text: [m.klasse, 'fertig ' + L.wann(m.zeit), kannKurz(m.kann)].filter(Boolean).join(' · ') }),
-      m.entwurf_id ? el('span', { class: 'chip gelb klein', text: 'Ihr Entwurf' }) : null),
+      m.entwurf_id ? el('span', { class: 'chip gelb klein', text: 'Ihr Entwurf' }) : null,
+      m.gespraech ? el('span', { class: 'chip blau klein' }, L.symbol('uhr'), 'Gespräch ' + L.tag(m.gespraech.datum) + ' ' + m.gespraech.beginn) : null),
     el('button', { type: 'button', class: 'klein' + (m.darf ? ' haupt' : ''), onclick: () => Rueck.oeffnen({ schueler: m.schueler_id, meldung: m.meldung_id, danach: zeigen }) },
       m.darf ? 'öffnen' : 'ansehen'));
 }

@@ -14,7 +14,7 @@ Ablauf (Konzept Fassung 2):
 import datetime
 import re
 
-from . import db, klassen, lernplan, nachweise, unterrichtstage as ut
+from . import db, klassen, lernplan, nachweise, termine, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 MAX_TEXT = 6000
@@ -208,6 +208,7 @@ def eingang(con, konto):
         aus.append({"meldung_id": m["id"], "zeit": m["zeit"], "schueler_id": m["schueler_id"], "name": "%s %s" % (m["vorname"], m["nachname"]),
                     "klasse_id": m["klasse_id"], "klasse": m["klasse"], "aufgabe_id": m["aufgabe_id"], "kuerzel": m["kuerzel"],
                     "titel": m["titel"], "paket": m["paket"], "kann": kann, "entwurf_id": entwurf[0] if entwurf else None,
+                    "gespraech": termine.gespraech(con, m["id"]),
                     "darf": klassen.zugriff(con, m["klasse_id"], konto) == "team"})
     return aus
 
@@ -300,7 +301,8 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
                                                                "WHERE ka.aufgabe_id = ? AND k.aktiv = 1 ORDER BY k.pos", (x["id"],))]})
     daten = _rueckmeldung_daten(con, entwurf, s["klasse_id"]) if entwurf else None
     return {"schueler": {"id": s["id"], "vorname": s["vorname"], "nachname": s["nachname"], "klasse_id": s["klasse_id"], "klasse": s["klasse"]},
-            "darf": darf, "meldung": {"id": meldung["id"], "zeit": meldung["zeit"], "status": meldung["status"]} if meldung else None,
+            "darf": darf, "meldung": {"id": meldung["id"], "zeit": meldung["zeit"], "status": meldung["status"],
+                                      "gespraech": termine.gespraech(con, meldung["id"])} if meldung else None,
             "termin": {"id": termin["id"], "datum": termin["datum"], "beginn": termin["beginn"], "anlass_text": termin["anlass_text"]} if termin else None,
             **_aufgabe_kurz(con, a["id"] if a else None), "paket_id": paket_id,
             "kann": _kann_stand(con, schueler_id, kann_zeilen, entwurf["id"] if entwurf and not entwurf["freigegeben"] else None),

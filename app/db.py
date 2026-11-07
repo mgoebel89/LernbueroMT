@@ -366,6 +366,12 @@ MIGRATIONEN = [
     ALTER TABLE rueckmeldung ADD COLUMN punkte REAL;
     ALTER TABLE rueckmeldung ADD COLUMN note TEXT
     """,
+    # 6: Gespraechstermin aus "Zu pruefen": die Lehrkraft traegt den Termin ein (Pflicht, nur Lehrkraefte sagen ab)
+    """
+    ALTER TABLE termin ADD COLUMN pflicht INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE termin ADD COLUMN meldung_id INTEGER REFERENCES meldung(id) ON DELETE SET NULL;
+    ALTER TABLE termin ADD COLUMN hinweis TEXT NOT NULL DEFAULT ''
+    """,
 ]
 
 

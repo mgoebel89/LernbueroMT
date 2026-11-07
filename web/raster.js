@@ -1,6 +1,9 @@
 // Lernplan-Raster (Stufe C), für die Schülerseite (bearbeitbar) und die Schülerseite der Lehrkraft (nur lesen).
 // Spalten = Unterrichtstage der Klasse (Ferien und Ausfall schraffiert, „ohne Lehrkraft“ gelb), Zeilen = Aufgaben.
-// Planen: Zelle antippen oder mit der Maus über mehrere Tage ziehen. Vergangene Tage und Tage ohne Unterricht sind gesperrt.
+// Zwei Modi für den Schüler: „markieren“ (Normalfall: Tipp auf heute oder einen Unterrichtstag der letzten 7 Tage schaltet die
+// Farbe grün → gelb → rot → leer, die ganze Zelle wird eingefärbt) und „planen“ (nach dem Knopf „Plan bearbeiten“: Zelle
+// antippen oder mit der Maus über mehrere Tage ziehen; vergangene Tage und Tage ohne Unterricht sind gesperrt).
+// Fertig gemeldete und angenommene Aufgaben sind ausgegraut.
 'use strict';
 const Raster = (() => {
   const el = L.el;
@@ -24,9 +27,24 @@ const Raster = (() => {
       L.symbol('stern'), v ? 'verbindlich' + (v.wirksam ? ' bis ' + L.tag(v.wirksam) : '') : 'empfohlen');
   }
 
-  // z: Zustand von /api/s/<code>/plan; o: { bearbeitbar, planen(aufgabe_id, hinzu, weg), waehlen(zeile, gruppe), oeffnen(zeile, gruppe) }
+  const FARBEN = ['g', 'y', 'r'];
+  const FARBTEXT = { g: 'im Zeitplan', y: 'knapp, schaffe ich bis zur Frist', r: 'nicht im Zeitplan' };
+  const MARKIER_TAGE = 7;
+  const erledigt = r => r.status === 'fertig' || r.status === 'angenommen';
+
+  function isoMinus(iso, tage) {
+    const d = new Date(iso + 'T12:00:00');
+    d.setDate(d.getDate() - tage);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // z: Zustand von /api/s/<code>/plan; o: { bearbeitbar, modus: 'markieren' | 'planen', planen(aufgabe_id, hinzu, weg),
+  //   markieren(aufgabe_id, datum, farbe|null), waehlen(zeile, gruppe), oeffnen(zeile, gruppe), nachweis(n) }
   function zeichnen(z, o = {}) {
     const tage = z.spalten;
+    const planModus = o.bearbeitbar && o.modus === 'planen';
+    const markModus = o.bearbeitbar && !planModus;
+    const markAb = isoMinus(z.heute, MARKIER_TAGE);
     const kopf = el('tr', {}, el('th', { class: 'links', text: 'Aufgabe' }), el('th', { class: 'links', text: 'Stand' }),
       tage.map(t => el('th', { class: [t.datum === z.heute ? 'heute' : '', t.status !== 'unterricht' ? (t.status === 'ohne' ? 'ohne' : 'aus') : ''].join(' ').trim(),
         title: t.grund || null }, t.tag, el('br'), t.datum.slice(8, 10) + '.' + t.datum.slice(5, 7) + '.')));
@@ -57,21 +75,35 @@ const Raster = (() => {
           n.wirksam && !n.gelungen ? el('span', { class: 'leise klein' + (n.ueber_frist ? ' rot-text' : ''), text: ' bis ' + L.tag(n.wirksam) }) : null),
         tage.map(t => el('td', { class: zellKlasse(t, z) }, n.wirksam === t.datum ? el('span', { class: 'frist', text: 'F' }) : null)))));
     });
-    const tabelle = el('table', { class: 'lp' }, el('thead', {}, kopf), koerper);
-    if (o.bearbeitbar) ziehen(tabelle, o);
+    const tabelle = el('table', { class: 'lp' + (planModus ? ' planmodus' : markModus ? ' markmodus' : '') }, el('thead', {}, kopf), koerper);
+    if (planModus) ziehen(tabelle, o);
+    if (markModus) tabelle.addEventListener('click', ev => {
+      const td = ev.target.closest ? ev.target.closest('td.mk') : null;
+      if (!td) return;
+      const alt = td.dataset.farbe || '';
+      const neu = alt === '' ? 'g' : alt === 'g' ? 'y' : alt === 'y' ? 'r' : null;
+      td.classList.remove('f-g', 'f-y', 'f-r');
+      if (neu) td.classList.add('f-' + neu);
+      td.dataset.farbe = neu || '';
+      o.markieren(Number(td.parentNode.dataset.aufgabe), td.dataset.datum, neu);
+    });
     return el('div', { class: 'stapel', style: 'gap:8px' },
-      el('div', { class: 'legende' }, el('span', {}, el('i', { class: 'm-bal' }), 'geplant'), el('span', {}, el('i', { class: 'm-ist' }), 'bearbeitet'),
+      el('div', { class: 'legende' }, el('span', {}, el('i', { class: 'm-bal' }), 'geplant'),
+        FARBEN.map(f => el('span', {}, el('i', { class: 'm-farbe f-' + f }), FARBTEXT[f])),
         el('span', {}, el('span', { class: 'frist', style: 'position:static', text: 'F' }), 'Frist'), el('span', {}, el('i', { class: 'm-aus' }), 'kein Unterricht'),
-        el('span', {}, el('i', { class: 'm-ohne' }), 'ohne Lehrkraft'), o.bearbeitbar ? el('span', { text: 'Tag antippen oder Balken ziehen = planen' }) : null),
+        el('span', {}, el('i', { class: 'm-ohne' }), 'ohne Lehrkraft'),
+        planModus ? el('span', { class: 'hinweis-modus', text: 'Planen: Tag antippen oder Balken ziehen' })
+          : markModus ? el('span', { class: 'hinweis-modus', text: 'Tag antippen = Farbe für heute und die letzten 7 Tage' }) : null),
       el('div', { class: 'r-scroll' }, tabelle));
 
     function zeile(r, g) {
-      const planbar = o.bearbeitbar && r.gewaehlt;
+      const planbar = planModus && r.gewaehlt;
+      const markbar = markModus && r.gewaehlt && !erledigt(r);
       const knopf = o.bearbeitbar && r.art === 'wahl'
         ? el('button', { type: 'button', class: 'klein', onclick: () => o.waehlen(r, g) }, r.gewaehlt ? 'abwählen' : 'wählen') : null;
       const kz = o.oeffnen ? el('button', { type: 'button', class: 'kz', title: 'Aufgabe öffnen', text: r.kuerzel, onclick: () => o.oeffnen(r, g) })
         : el('span', { class: 'kz', text: r.kuerzel });
-      return el('tr', { class: [r.gewaehlt ? '' : 'blass', r.art === 'zusatz' ? 'zusatz' : ''].join(' ').trim() || null, 'data-aufgabe': r.id,
+      return el('tr', { class: [r.gewaehlt ? '' : 'blass', r.art === 'zusatz' ? 'zusatz' : '', erledigt(r) ? 'erledigt' : ''].join(' ').trim() || null, 'data-aufgabe': r.id,
         'data-planbar': planbar ? '1' : null },
         el('td', { class: 'auf', title: r.titel }, kz,
           r.moodle_link ? el('a', { class: 'alink', href: r.moodle_link, target: '_blank', rel: 'noopener', text: r.titel }) : r.titel,
@@ -81,10 +113,12 @@ const Raster = (() => {
         tage.map((t, i) => {
           const geplant = r.plan.includes(t.datum), voriger = i > 0 && r.plan.includes(tage[i - 1].datum), naechster = i < tage.length - 1 && r.plan.includes(tage[i + 1].datum);
           const kann = planbar && plant(t) && t.datum >= z.heute;
-          return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : ''), 'data-datum': kann ? t.datum : null, title: t.grund || null },
+          const mk = markbar && plant(t) && t.datum <= z.heute && t.datum >= markAb;
+          const farbe = r.ist[t.datum];
+          return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : '') + (mk ? ' mk' : '') + (farbe ? ' f-' + farbe : ''),
+            'data-datum': kann || mk ? t.datum : null, 'data-farbe': mk ? farbe || '' : null,
+            title: farbe ? FARBTEXT[farbe] : t.grund || null },
             geplant ? el('span', { class: 'bal' + (voriger ? '' : ' a') + (naechster ? '' : ' e') }) : null,
-            r.ist[t.datum] ? el('span', { class: 'ist' }) : null,
-            r.ist[t.datum] ? el('span', { class: 'ak a-' + r.ist[t.datum] }) : null,
             r.wirksam === t.datum && r.gewaehlt ? el('span', { class: 'frist', text: 'F' }) : null);
         }));
     }
@@ -159,6 +193,8 @@ const Raster = (() => {
       hilfe: () => 'Hilfe gerufen', hilfe_zurueck: () => 'Hilfe zurückgezogen', hilfe_erledigt: () => 'Hilfe erledigt',
       termin_gebucht: () => 'Feedbacktermin gebucht: ' + L.tag(d.datum) + ' ' + d.beginn,
       termin_abgesagt: () => 'Termin ' + L.tag(d.datum) + ' ' + d.beginn + ' abgesagt',
+      markiert: () => d.kuerzel + ' am ' + L.tag(d.datum) + ': ' + (d.ampel ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[d.ampel] : 'Markierung entfernt'),
+      gespraech: () => 'Gespräch nötig zu ' + d.kuerzel + ': ' + L.tag(d.datum) + ' ' + d.beginn,
       bereit: () => 'bereit gemeldet für den Gelingensnachweis (' + d.paket + ', ' + d.versuch + '. Versuch)',
       bereit_zurueck: () => 'Bereitmeldung zurückgezogen (' + d.versuch + '. Versuch)',
       freigeschaltet: () => 'Test in Moodle freigeschaltet (' + d.versuch + '. Versuch)', freischaltung_zurueck: () => 'Freischaltung zurückgenommen',
@@ -169,5 +205,5 @@ const Raster = (() => {
     try { return (texte[e.art] || (() => e.art))(); } catch (f) { return e.art; }
   }
 
-  return { zeichnen, ereignisText, statusChip, STATUS };
+  return { zeichnen, ereignisText, statusChip, STATUS, FARBTEXT };
 })();

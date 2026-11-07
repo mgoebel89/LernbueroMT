@@ -13,6 +13,10 @@ Ferien, "ohne Lehrkraft").
 
 Feedback: Der Schueler gibt den Anlass an (Aufgabe, Paket oder allgemein), hat hoechstens einen offenen Termin und
 kann bis zum Vortag selbst absagen. Andere Schueler sieht er nur als "belegt" (eigentlich: gar nicht, der Platz fehlt).
+
+Gespraechstermin: Aus "Zu pruefen" traegt die Lehrkraft dem Schueler einen Termin aus ihrer eigenen Sprechzeit ein
+("Gespraech noetig", mit Hinweis). Das ist ein Pflichttermin: absagen oder verlegen koennen nur Lehrkraefte; er zaehlt
+nicht als der eine offene Feedbacktermin des Schuelers.
 """
 import datetime
 import json
@@ -346,13 +350,15 @@ def absagen_lehrkraft(con, konto, termin_id):
 
 # --- Schueler: buchen und absagen ---
 
-def freie_plaetze(con, schueler, art="feedback", heute=None, jetzt_hhmm=None):
-    """[{datum, tag, zeitfenster_id, lehrkraft, plaetze: [beginn, ...]}] fuer die naechsten Wochen (heute nur spaetere Plaetze)."""
+def freie_plaetze(con, schueler, art="feedback", heute=None, jetzt_hhmm=None, lehrkraft_id=None):
+    """[{datum, tag, zeitfenster_id, lehrkraft, plaetze: [beginn, ...]}] fuer die naechsten Wochen (heute nur spaetere Plaetze).
+    lehrkraft_id: nur die Fenster dieser Lehrkraft (Gespraechstermin aus "Zu pruefen")."""
     heute = heute or db.heute()
     jetzt_hhmm = jetzt_hhmm or _jetzt_hhmm()
     fensterart = TERMINARTEN[art]
     aus = []
-    for z in con.execute("SELECT * FROM zeitfenster WHERE klasse_id = ? AND aktiv = 1 AND art = ?", (schueler["klasse_id"], fensterart)).fetchall():
+    for z in con.execute("SELECT * FROM zeitfenster WHERE klasse_id = ? AND aktiv = 1 AND art = ? AND (? IS NULL OR lehrkraft_id = ?)",
+                         (schueler["klasse_id"], fensterart, lehrkraft_id, lehrkraft_id)).fetchall():
         l = con.execute("SELECT name FROM lehrkraft WHERE id = ?", (z["lehrkraft_id"],)).fetchone()
         for d, t in fenstertage(con, z, heute, heute + VORAUS_TAGE * TAG):
             if t is None or t["status"] != "unterricht":
@@ -375,7 +381,8 @@ def termine_schueler(con, schueler, heute=None):
             continue
         aus.append({"id": t["id"], "datum": t["datum"], "beginn": t["beginn"], "ende": t["ende"], "art": t["art"], "lehrkraft": t["lehrkraft"],
                     "anlass": _anlass_text(con, t), "abgesagt": t["abgesagt"], "von_lehrkraft_abgesagt": bool(t["abgesagt"]),
-                    "absagen_bis": (ut.datum(t["datum"]) - TAG).isoformat(), "darf_absagen": t["datum"] > heute and not t["abgesagt"]})
+                    "pflicht": bool(t["pflicht"]), "hinweis": t["hinweis"], "absagen_bis": (ut.datum(t["datum"]) - TAG).isoformat(),
+                    "darf_absagen": t["datum"] > heute and not t["abgesagt"] and not t["pflicht"]})
     return aus
 
 
@@ -413,7 +420,7 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
     platz = next(((b, e) for b, e in plaetze(z) if b == beginn), None)
     if platz is None:
         raise TerminFehler("Diesen Platz gibt es nicht.")
-    if art == "feedback" and con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND abgesagt IS NULL AND (datum > ? OR "
+    if art == "feedback" and con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND pflicht = 0 AND abgesagt IS NULL AND (datum > ? OR "
                                          "(datum = ? AND ende > ?))", (schueler["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
         raise TerminFehler("Du hast schon einen offenen Feedbacktermin. Sage ihn ab, wenn du einen anderen willst.")
     if beginn in _gebucht(con, z["id"], d.isoformat()):
@@ -451,8 +458,70 @@ def absagen_schueler(con, schueler, termin_id, heute=None):
     t = con.execute("SELECT * FROM termin WHERE id = ? AND schueler_id = ? AND abgesagt IS NULL", (termin_id, schueler["id"])).fetchone()
     if t is None:
         raise TerminFehler("Diesen Termin gibt es nicht (mehr).")
+    if t["pflicht"]:
+        raise TerminFehler("Diesen Termin hat deine Lehrkraft eingetragen. Absagen oder verlegen geht nur über sie.")
     if t["datum"] <= heute.isoformat():
         raise TerminFehler("Absagen geht nur bis zum Vortag. Bitte sprich deine Lehrkraft an.")
     con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = 'schueler' WHERE id = ?", (db.jetzt(), termin_id))
     _versuche_loesen(con, [termin_id])
     db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
+
+
+# --- Gespraechstermin aus "Zu pruefen" ---
+
+def _meldung_lk(con, konto, meldung_id, recht="aendern"):
+    m = con.execute("SELECT m.*, s.klasse_id, s.vorname, s.nachname, a.kuerzel FROM meldung m JOIN schueler s ON s.id = m.schueler_id "
+                    "JOIN aufgabe a ON a.id = m.aufgabe_id WHERE m.id = ?", (meldung_id,)).fetchone()
+    if m is None:
+        raise TerminFehler("Diese Meldung gibt es nicht.")
+    klassen.pruefen(con, m["klasse_id"], konto, recht)
+    return m
+
+
+def gespraech(con, meldung_id):
+    """Der eingetragene, nicht abgesagte Gespraechstermin zu einer Meldung (oder None)."""
+    t = con.execute("SELECT t.*, l.name AS lehrkraft FROM termin t JOIN zeitfenster z ON z.id = t.zeitfenster_id "
+                    "JOIN lehrkraft l ON l.id = z.lehrkraft_id WHERE t.meldung_id = ? AND t.abgesagt IS NULL ORDER BY t.id DESC LIMIT 1",
+                    (meldung_id,)).fetchone()
+    return {"id": t["id"], "datum": t["datum"], "beginn": t["beginn"], "ende": t["ende"], "lehrkraft": t["lehrkraft"], "hinweis": t["hinweis"]} if t else None
+
+
+def gespraech_plaetze(con, konto, meldung_id, heute=None, jetzt_hhmm=None):
+    """Freie Plaetze in den eigenen Sprechzeiten der Lehrkraft in der Klasse des Schuelers."""
+    m = _meldung_lk(con, konto, meldung_id)
+    s = con.execute("SELECT * FROM schueler WHERE id = ?", (m["schueler_id"],)).fetchone()
+    return freie_plaetze(con, s, "feedback", heute, jetzt_hhmm, lehrkraft_id=konto["id"])
+
+
+def gespraech_eintragen(con, konto, meldung_id, zeitfenster_id, datum, beginn, hinweis="", heute=None, jetzt_hhmm=None):
+    heute = heute or db.heute()
+    jetzt_hhmm = jetzt_hhmm or _jetzt_hhmm()
+    m = _meldung_lk(con, konto, meldung_id)
+    if m["status"] != "offen":
+        raise TerminFehler("Über diese Meldung ist schon entschieden.")
+    if gespraech(con, meldung_id):
+        raise TerminFehler("Für diese Meldung ist schon ein Gespräch eingetragen. Sagen Sie es zuerst ab, um es zu verlegen.")
+    z = con.execute("SELECT * FROM zeitfenster WHERE id = ? AND aktiv = 1", (zeitfenster_id,)).fetchone()
+    if z is None or z["klasse_id"] != m["klasse_id"] or z["art"] != "sprech" or z["lehrkraft_id"] != konto["id"]:
+        raise TerminFehler("Bitte einen Platz aus Ihrer Sprechzeit in dieser Klasse wählen.")
+    try:
+        d = ut.datum(datum)
+    except ut.TageFehler:
+        raise TerminFehler("Ungültiger Tag.")
+    if d < heute or (d == heute and str(beginn) <= jetzt_hhmm):
+        raise TerminFehler("Dieser Platz liegt in der Vergangenheit.")
+    if d not in [x for x, t in fenstertage(con, z, d, d) if t and t["status"] == "unterricht"]:
+        raise TerminFehler("An diesem Tag gibt es keine Sprechzeit.")
+    platz = next(((b, e) for b, e in plaetze(z) if b == beginn), None)
+    if platz is None:
+        raise TerminFehler("Diesen Platz gibt es nicht.")
+    if beginn in _gebucht(con, z["id"], d.isoformat()):
+        raise TerminFehler("Dieser Platz ist schon vergeben.")
+    hinweis = re.sub(r"\s+", " ", str(hinweis or "")).strip()[:200]
+    tid = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
+                      "anlass_text, gebucht, pflicht, meldung_id, hinweis) "
+                      "SELECT ?, ?, ?, ?, ?, 'feedback', a.id, a.paket_id, '', ?, 1, ?, ? FROM aufgabe a WHERE a.id = ?",
+                      (z["id"], m["schueler_id"], d.isoformat(), platz[0], platz[1], db.jetzt(), meldung_id, hinweis, m["aufgabe_id"])).lastrowid
+    db.ereignis(con, m["klasse_id"], m["schueler_id"], "lehrkraft", konto["kuerzel"], "gespraech", datum=d.isoformat(), beginn=platz[0],
+                kuerzel=m["kuerzel"], meldung_id=meldung_id)
+    return tid

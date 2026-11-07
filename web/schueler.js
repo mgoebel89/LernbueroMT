@@ -15,8 +15,8 @@ const BEREICHE = [
   { s: 'rueck', lang: 'Rückmeldungen', kurz: 'Rückmeld.' },
   { s: 'gn', lang: 'Gelingensnachweise', kurz: 'Nachweise' },
 ];
-const AMPELN = [['g', 'im Plan'], ['y', 'Probleme, schaffe ich wohl'], ['r', 'ohne Hilfe nicht weiter']];
-let ich = null, z = null, gefragt = false;
+const AMPELN = [['g', 'im Zeitplan'], ['y', 'knapp, schaffe ich bis zur Frist'], ['r', 'nicht im Zeitplan, brauche Hilfe']];
+let ich = null, z = null, gefragt = false, modus = 'markieren';
 
 const api = (pfad, daten) => L.api(daten === undefined ? 'GET' : 'POST', '/api/s/' + CODE + pfad, daten);
 const zahlen = () => ich.einschaetzer === 'zahl';
@@ -117,13 +117,37 @@ function naechsteFrist() {
 
 function planZeigen() {
   const n = naechsteFrist();
+  const alt = inhalt.querySelector('.r-scroll');
+  const links = alt ? alt.scrollLeft : null;
+  const planen_ = modus === 'planen';
   L.setzen(inhalt,
-    el('h1', { class: 'dreieck', text: 'Mein Plan' }),
+    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Mein Plan' }),
+      z.pakete.length ? el('button', { type: 'button', class: planen_ ? 'haupt' : null, onclick: () => { modus = planen_ ? 'markieren' : 'planen'; planZeigen(); } },
+        L.symbol(planen_ ? 'haken' : 'plan'), planen_ ? 'Planen beenden' : 'Plan bearbeiten') : null),
     n ? el('div', { class: 'banner' }, 'Nächste Frist: ', el('b', { text: n.kuerzel + ' ' + n.titel }), ' am ' + L.tag(n.wirksam) + '.') : null,
-    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, planen, waehlen: wahlFragen, oeffnen: aufgabeOeffnen, nachweis: () => { location.hash = 'gn'; } })
+    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, modus, planen, markieren, waehlen: wahlFragen, oeffnen: aufgabeOeffnen,
+      nachweis: () => { location.hash = 'gn'; } })
       : el('div', { class: 'leer', text: 'Noch ist kein Lernpaket für dich freigegeben.' }),
     z.pakete.length ? el('p', { class: 'leise klein', text: 'Kürzel antippen: Aufgabe öffnen, fertig melden. Name antippen: Aufgabe in Moodle.' }) : null,
     el('p', { class: 'leise klein' }, 'Nicht du? ', el('a', { href: '/?neu', text: 'Anderen Code eingeben' })));
+  // Scrollstand behalten; beim ersten Zeichnen den heutigen Tag in die Mitte holen
+  const neu = inhalt.querySelector('.r-scroll');
+  if (neu && links !== null) neu.scrollLeft = links;
+  else if (neu) {
+    const h = neu.querySelector('th.heute');
+    if (h) neu.scrollLeft = Math.max(0, h.offsetLeft - neu.clientWidth / 2);
+  }
+}
+
+let markLaeuft = 0, markUhr = null;
+async function markieren(aufgabeId, datum, ampel) {
+  // die Zelle ist schon eingefärbt; neu gezeichnet wird erst, wenn eine Weile nicht mehr getippt wurde (Status, Scrollstand bleibt)
+  markLaeuft += 1;
+  clearTimeout(markUhr);
+  try { z = await api('/markieren', { aufgabe_id: aufgabeId, datum, ampel }); }
+  catch (e) { L.meldung(e.message, true); markLaeuft -= 1; planZeigen(); return; }
+  markLaeuft -= 1;
+  markUhr = setTimeout(() => { if (!markLaeuft && (location.hash || '#plan') === '#plan' && !document.querySelector('dialog')) planZeigen(); }, 1500);
 }
 
 async function planen(aufgabeId, hinzu, weg) {
@@ -157,8 +181,8 @@ function heuteZeigen() {
         : el('p', { class: 'leise', text: unterricht ? 'Für heute hast du nichts geplant. Plane in „Mein Plan“.' : 'Nichts geplant.' })),
     unterricht ? el('button', { type: 'button', class: z.abgeschlossen ? 'knopf' : 'haupt', style: 'width:100%;padding:12px', onclick: abschliessen },
       L.symbol('kann'), z.abgeschlossen ? 'Tag abgeschlossen um ' + z.abgeschlossen.slice(11, 16) + ' · ändern' : 'Tag abschließen') : null,
-    z.hinweise.ampel_alt.length ? el('div', { class: 'banner warnung', text: 'Ampel fehlt seit über einer Woche: ' +
-      z.hinweise.ampel_alt.map(h => h.kuerzel).join(', ') + '. Bitte beim Tagesabschluss einschätzen.' }) : null,
+    z.hinweise.ampel_alt.length ? el('div', { class: 'banner warnung', text: 'Farbe fehlt seit über einer Woche: ' +
+      z.hinweise.ampel_alt.map(h => h.kuerzel).join(', ') + '. Bitte im Plan oder beim Tagesabschluss markieren.' }) : null,
     termineKarte(),
     fristen.length ? el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Demnächst fällig' }),
       el('div', { class: 'liste-klein' }, fristen.map(r => el('div', {}, el('span', { class: 'dat', text: L.tag(r.wirksam) }), r.kuerzel + ' ' + r.titel)))) : null);
@@ -171,12 +195,14 @@ function alleNachweise() {
 const TERMINART = { feedback: 'Feedback', fachgespraech: 'Fachgespräch', praxis: 'Praktische Prüfung' };
 
 function termineKarte() {
-  const offen = z.termine.filter(t => !t.abgesagt && t.art === 'feedback');
+  const offen = z.termine.filter(t => !t.abgesagt && t.art === 'feedback' && !t.pflicht);
   return el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Termine' }),
-    z.termine.length ? el('div', { class: 'stapel', style: 'gap:6px' }, z.termine.map(t => el('div', { class: 'termin-zeile' + (t.abgesagt ? ' abgesagt' : '') },
-      el('div', {}, el('b', { text: L.tag(t.datum) + ' · ' + t.beginn }), ' · ' + (t.art === 'feedback' ? t.anlass : TERMINART[t.art] + ' · ' + t.anlass),
-        el('div', { class: 'leise klein', text: t.abgesagt ? 'abgesagt von der Lehrkraft, bitte neu buchen' : 'bei ' + t.lehrkraft +
-          (t.darf_absagen ? ' · absagen bis ' + L.tag(t.absagen_bis) : ' · absagen nur noch bei der Lehrkraft') })),
+    z.termine.length ? el('div', { class: 'stapel', style: 'gap:6px' }, z.termine.map(t => el('div', { class: 'termin-zeile' + (t.abgesagt ? ' abgesagt' : '') + (t.pflicht ? ' pflicht' : '') },
+      el('div', {}, t.pflicht && !t.abgesagt ? el('div', { class: 'pflicht-titel', text: 'Deine Lehrkraft möchte mit dir sprechen' }) : null,
+        el('b', { text: L.tag(t.datum) + ' · ' + t.beginn }), ' · ' + (t.art === 'feedback' ? t.anlass : TERMINART[t.art] + ' · ' + t.anlass),
+        t.hinweis && !t.abgesagt ? el('div', { class: 'klein', text: '„' + t.hinweis + '“' }) : null,
+        el('div', { class: 'leise klein', text: t.abgesagt ? (t.pflicht ? 'abgesagt von der Lehrkraft' : 'abgesagt von der Lehrkraft, bitte neu buchen') : 'bei ' + t.lehrkraft +
+          (t.pflicht ? ' · Pflichttermin, absagen nur über deine Lehrkraft' : t.darf_absagen ? ' · absagen bis ' + L.tag(t.absagen_bis) : ' · absagen nur noch bei der Lehrkraft') })),
       t.darf_absagen ? el('button', { type: 'button', class: 'klein', onclick: () => absagen(t), text: 'absagen' }) : null)))
       : el('p', { class: 'leise klein', text: 'Kein Termin gebucht.' }),
     offen.length ? null : el('button', { type: 'button', style: 'justify-self:start', onclick: () => terminBuchen() }, L.symbol('uhr'), 'Feedbacktermin buchen'));
@@ -204,7 +230,7 @@ async function abschliessen() {
     inhalt: el('div', { class: 'stapel', style: 'gap:4px' }, geplant.map(zeile),
       andere.length ? el('button', { type: 'button', class: 'leicht', style: 'justify-self:start', onclick: ev => { weitere.hidden = false; ev.currentTarget.remove(); } },
         'andere Aufgabe bearbeitet …') : null, weitere,
-      el('p', { class: 'leise klein', text: 'Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Ampel.' })),
+      el('p', { class: 'leise klein', text: 'Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Farbe. Nachtragen geht im Plan.' })),
     speichern: async form => {
       const eintraege = Array.from(form.querySelectorAll('.abschluss-zeile'))
         .filter(d => d.querySelector('input[type=checkbox]').checked).map(d => ({ aufgabe_id: Number(d.dataset.aufgabe), ampel: wahl[d.dataset.aufgabe] }));

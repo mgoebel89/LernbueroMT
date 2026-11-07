@@ -96,18 +96,49 @@ const Rueck = (() => {
           el('div', {}, el('span', { class: 'leise', text: 'nachher ' }), el('b', { text: L.stufeText(k.nachher, zahlen) }))),
         L.skala(kannWerte[k.kann_id], lesen ? null : s => { kannWerte[k.kann_id] = s; }, zahlen)))) : null;
 
-    // Entscheidung
-    let entscheidung = null, neueFrist = null, entscheidungsBlock = null;
+    // Entscheidung: angenommen / überarbeiten bis / Gespräch nötig (Termin aus Ihrer Sprechzeit, Pflichttermin)
+    let entscheidung = null, neueFrist = null, entscheidungsBlock = null, gespraechWahl = null, gespraechHinweis = null;
+    const gespraech = v.meldung && v.meldung.gespraech;
     if (offen && !lesen) {
       const n = 'e' + Math.random().toString(36).slice(2);
       const an = el('input', { type: 'radio', name: n, value: 'angenommen', checked: e && e.entscheidung === 'angenommen' });
       const ue = el('input', { type: 'radio', name: n, value: 'ueberarbeiten', checked: e && e.entscheidung === 'ueberarbeiten' });
+      const ge = gespraech ? null : el('input', { type: 'radio', name: n, value: 'gespraech' });
       neueFrist = el('input', { type: 'date', value: e && e.neue_frist ? e.neue_frist : v.frist_vorschlag });
-      entscheidung = () => an.checked ? 'angenommen' : ue.checked ? 'ueberarbeiten' : null;
+      entscheidung = () => an.checked ? 'angenommen' : ue.checked ? 'ueberarbeiten' : ge && ge.checked ? 'gespraech' : null;
+      const platzOrt = el('div', { class: 'stapel', style: 'gap:6px', hidden: true });
+      gespraechHinweis = el('input', { maxlength: 200, placeholder: 'Hinweis für ' + v.schueler.vorname + ', z. B. Bring deine Rechnung mit' });
+      let geladen = false;
+      const platzLaden = async () => {
+        platzOrt.hidden = !(ge && ge.checked);
+        const form = platzOrt.closest('form');
+        const haupt = form ? form.querySelector('button[type=submit]') : null;
+        if (haupt) haupt.textContent = platzOrt.hidden ? 'Freigeben' : 'Gespräch eintragen';
+        if (platzOrt.hidden || geladen) return;
+        geladen = true;
+        L.setzen(platzOrt, el('p', { class: 'leise klein', text: 'Lade Ihre Sprechzeiten …' }));
+        try {
+          const { plaetze } = await L.api('GET', '/api/meldungen/' + v.meldung.id + '/plaetze');
+          L.setzen(platzOrt, plaetze.length ? [el('div', { class: 'stapel', style: 'gap:8px' }, plaetze.map(t => el('div', { class: 'stapel', style: 'gap:4px' },
+            el('div', { class: 'etikett', text: L.tag(t.datum) + ' · ' + t.dauer + ' min' }),
+            el('div', { class: 'slots' }, t.plaetze.map(b => el('button', { type: 'button', text: b, onclick: ev => {
+              gespraechWahl = { zeitfenster_id: t.zeitfenster_id, datum: t.datum, beginn: b };
+              platzOrt.querySelectorAll('.slots button').forEach(x => x.classList.toggle('an', x === ev.currentTarget));
+            } })))))), L.feld('Hinweis für ' + v.schueler.vorname + ' (wahlweise)', gespraechHinweis)]
+            : el('div', { class: 'banner warnung klein', text: 'In Ihren Sprechzeiten dieser Klasse ist nichts frei. Legen Sie unter „Zeitfenster“ eine Sprechzeit an.' }));
+        } catch (f) { geladen = false; L.setzen(platzOrt, el('div', { class: 'banner warnung klein', text: f.message })); }
+      };
+      [an, ue, ge].filter(Boolean).forEach(x => x.addEventListener('change', platzLaden));
       entscheidungsBlock = el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Entscheidung' }),
+        gespraech ? el('div', { class: 'banner zeile' }, el('span', {}, 'Gespräch eingetragen: ', el('b', { text: L.tag(gespraech.datum) + ' · ' + gespraech.beginn }),
+          gespraech.hinweis ? ' · „' + gespraech.hinweis + '“' : ''),
+        el('button', { type: 'button', class: 'klein warnen rechts', onclick: ev => gespraechAbsagen(gespraech, ev, o, v) }, 'absagen')) : null,
         el('div', { class: 'entscheidung' }, el('label', { class: 'haken' }, an, 'angenommen'),
-          el('label', { class: 'haken' }, ue, 'überarbeiten bis', neueFrist)),
-        el('p', { class: 'leise klein', text: 'Vorgabe für die neue Frist: der übernächste Unterrichtstag. ' + v.schueler.vorname + ' darf sich jederzeit wieder fertig melden.' }));
+          el('label', { class: 'haken' }, ue, 'überarbeiten bis', neueFrist),
+          ge ? el('label', { class: 'haken' }, ge, 'Gespräch nötig') : null),
+        platzOrt,
+        el('p', { class: 'leise klein', text: 'Vorgabe für die neue Frist: der übernächste Unterrichtstag. ' + v.schueler.vorname + ' darf sich jederzeit wieder fertig melden.'
+          + (ge ? ' „Gespräch nötig“ trägt einen Pflichttermin aus Ihrer Sprechzeit ein, die Meldung bleibt in „Zu prüfen“.' : '') }));
     } else if (e && e.entscheidung) {
       entscheidungsBlock = el('div', {}, el('span', { class: 'sc ' + e.entscheidung, text: e.entscheidung === 'angenommen' ? 'angenommen' : 'überarbeiten bis ' + L.tag(e.neue_frist) }));
     }
@@ -172,6 +203,19 @@ const Rueck = (() => {
     const speichern = freigeben => async () => {
       const d = daten(freigeben);
       if (d.empfehlungen.some(x => !x.aufgabe_id)) throw new Error('Bitte bei jeder Empfehlung eine Aufgabe wählen.');
+      if (d.entscheidung === 'gespraech') {
+        if (!freigeben) { d.entscheidung = undefined; }
+        else {
+          if (!gespraechWahl) throw new Error('Bitte einen Platz aus Ihrer Sprechzeit wählen.');
+          await L.api('POST', '/api/meldungen/' + v.meldung.id + '/gespraech', Object.assign({ hinweis: gespraechHinweis.value }, gespraechWahl));
+          // Text, Einschätzung und Empfehlungen bleiben als Entwurf für nach dem Gespräch
+          if (d.text.trim() || Object.keys(d.kann).length || d.empfehlungen.length) {
+            await L.api('POST', '/api/rueckmeldung', Object.assign(d, { entscheidung: undefined, freigeben: false }));
+          }
+          L.meldung('Gespräch eingetragen: ' + L.tag(gespraechWahl.datum) + ' · ' + gespraechWahl.beginn + '. ' + v.schueler.vorname + ' sieht den Termin.');
+          return true;
+        }
+      }
       const r = await L.api('POST', '/api/rueckmeldung', d);
       L.meldung(freigeben ? 'Freigegeben. ' + v.schueler.vorname + ' sieht die Rückmeldung jetzt.' : 'Entwurf gespeichert. Nur Sie sehen ihn.');
       return r;
@@ -195,6 +239,14 @@ const Rueck = (() => {
         e && !e.freigegeben && !lesen ? L.nebenknopf('Entwurf verwerfen …', () => verwerfen(e, o)) : null),
       speichern: speichern(true),
     }).then(r => { if (r && o.danach) o.danach(r); return r; });
+  }
+
+  async function gespraechAbsagen(g, ev, o, v) {
+    ev.currentTarget.closest('dialog').dispatchEvent(new Event('cancel'));
+    const ok = await L.dialog({ titel: 'Gespräch absagen?', knopf: 'Absagen', gefaehrlich: true,
+      inhalt: el('p', { text: L.tag(g.datum) + ' · ' + g.beginn + '. ' + v.schueler.vorname + ' sieht „abgesagt von der Lehrkraft“. Danach können Sie einen neuen Termin eintragen.' }),
+      speichern: () => L.api('POST', '/api/termine/' + g.id + '/absagen', {}) });
+    if (ok) oeffnen(o);
   }
 
   async function verwerfen(e, o) {

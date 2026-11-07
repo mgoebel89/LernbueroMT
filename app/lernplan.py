@@ -10,8 +10,10 @@ Grundsaetze (Konzept Fassung 2):
     (Stufe D) und nimmt die kuenftige Planung der Aufgabe mit.
   - Faellt ein Tag aus, wird nichts automatisch verschoben: der Schueler wird gefragt; die Verschiebung traegt dann
     grund = "ausfall" und zaehlt nicht als eigene.
-  - Tagesabschluss am Unterrichtstag: je bearbeiteter Aufgabe die Ampel (g im Plan, y Probleme, schaffe ich wohl,
-    r ohne Hilfe nicht weiter). Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Ampel.
+  - Stand je Tag und Aufgabe als Farbe nach dem Zeitplan (g im Zeitplan, y knapp, schaffe ich bis zur Frist,
+    r nicht im Zeitplan, brauche Hilfe oder einen neuen Plan): direkt im Raster fuer heute und die Unterrichtstage der
+    letzten 7 Tage (markieren) oder ueber den Tagesabschluss. Jede laufende Aufgabe braucht mindestens einmal pro Woche
+    eine Farbe.
 Jede Aenderung landet zusaetzlich im Ereignisprotokoll.
 """
 import datetime
@@ -21,6 +23,7 @@ from . import db, nachweise, pakete, unterrichtstage as ut
 TAG = datetime.timedelta(days=1)
 AMPELN = ("g", "y", "r")
 AMPEL_ALT_TAGE = 7
+MARKIEREN_TAGE = 7       # so weit zurueck darf der Schueler den Stand im Raster nachtragen
 
 
 class PlanFehler(Exception):
@@ -323,6 +326,30 @@ def tag_abschliessen(con, schueler, eintraege, heute=None):
     con.execute("INSERT INTO abschluss (schueler_id, datum, zeit) VALUES (?, ?, ?) ON CONFLICT (schueler_id, datum) DO UPDATE SET zeit = excluded.zeit",
                 (schueler["id"], d, db.jetzt()))
     _log(con, schueler, "tagesabschluss", datum=d, bearbeitet=[{"aufgabe_id": aid, "kuerzel": w[1], "ampel": w[0]} for aid, w in werte.items()])
+
+
+def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None):
+    """Farbe (g/y/r) einer Aufgabe an einem Tag setzen, ampel None = Markierung entfernen. Nur heute und Unterrichtstage
+    der letzten 7 Tage; ein markierter Tag zaehlt als "bearbeitet" (Ist)."""
+    heute = _heute(heute)
+    a = _aufgabe_sichtbar(con, schueler, aufgabe_id, heute)
+    if a["art"] == "wahl" and not con.execute("SELECT 1 FROM wahl WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aufgabe_id)).fetchone():
+        raise PlanFehler("Wähle die Aufgabe zuerst.")
+    if ampel not in AMPELN + (None,):
+        raise PlanFehler("Ungültige Farbe.")
+    d = ut.datum(datum)
+    if d > heute or d < heute - MARKIEREN_TAGE * TAG:
+        raise PlanFehler("Markieren geht für heute und die letzten %d Tage." % MARKIEREN_TAGE)
+    tag = next(iter(ut.tage(con, schueler["klasse_id"], d, d)), None)
+    if tag is None or not ut.findet_statt(tag):
+        raise PlanFehler("Am %s war kein Unterricht." % d.strftime("%d.%m."))
+    if ampel:
+        con.execute("INSERT INTO ist (schueler_id, aufgabe_id, datum, ampel) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT (schueler_id, aufgabe_id, datum) DO UPDATE SET ampel = excluded.ampel",
+                    (schueler["id"], aufgabe_id, d.isoformat(), ampel))
+    else:
+        con.execute("DELETE FROM ist WHERE schueler_id = ? AND aufgabe_id = ? AND datum = ?", (schueler["id"], aufgabe_id, d.isoformat()))
+    _log(con, schueler, "markiert", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], datum=d.isoformat(), ampel=ampel)
 
 
 def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None):

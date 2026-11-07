@@ -253,6 +253,58 @@ class Zeitfenster(Basis):
         self.assertEqual([(t["anlass"], t["von_lehrkraft_abgesagt"]) for t in meine], [("Paket Elektropneumatik", True)])
 
 
+class Gespraech(Basis):
+    def test_pflichttermin_aus_zu_pruefen(self):
+        with db.transaktion(self.con), mock.patch.object(db, "heute", return_value=HEUTE):
+            zf = termine.zeitfenster_anlegen(self.con, self.gob, self.k, {"art": "sprech", "von": "09:30", "bis": "10:30", "dauer": 10, "puffer": 5,
+                                                                         "gueltig_von": "2026-11-05", "gueltig_bis": "2026-12-17"})["zeitfenster"]
+            termine.zeitfenster_anlegen(self.con, self.sch, self.k, {"art": "sprech", "von": "11:00", "bis": "11:30", "dauer": 10,
+                                                                    "gueltig_von": "2026-11-05", "gueltig_bis": "2026-12-17"})
+            mid = rm.fertig_melden(self.con, self.lena, self.p1, {self.k1: 3, self.k2: 2}, HEUTE)
+        plaetze = termine.gespraech_plaetze(self.con, self.gob, mid, HEUTE, "09:00")
+        self.assertEqual({p["zeitfenster_id"] for p in plaetze}, {zf["id"]})                 # nur die eigene Sprechzeit
+        with self.assertRaises(klassen.KeinZugriff):
+            termine.gespraech_eintragen(self.con, self.kl, mid, zf["id"], "2026-11-19", "09:30", heute=HEUTE, jetzt_hhmm="09:00")
+        with db.transaktion(self.con):
+            termine.gespraech_eintragen(self.con, self.gob, mid, zf["id"], "2026-11-19", "09:30", "Bring die Rechnung mit", HEUTE, "09:00")
+        self.assertEqual((rm.eingang(self.con, self.gob)[0]["gespraech"]["beginn"]), "09:30")
+        with self.assertRaisesRegex(termine.TerminFehler, "schon ein Gespräch"):
+            termine.gespraech_eintragen(self.con, self.gob, mid, zf["id"], "2026-11-26", "09:30", heute=HEUTE, jetzt_hhmm="09:00")
+        t = termine.termine_schueler(self.con, self.lena, HEUTE)[0]
+        self.assertEqual((t["pflicht"], t["darf_absagen"], t["hinweis"], t["anlass"]), (True, False, "Bring die Rechnung mit", "P1 Schaltzeichen"))
+        with self.assertRaisesRegex(termine.TerminFehler, "Lehrkraft eingetragen"):
+            termine.absagen_schueler(self.con, self.lena, t["id"], HEUTE)
+        with db.transaktion(self.con):   # zaehlt nicht als der eine offene Feedbacktermin
+            termine.buchen(self.con, self.lena, zf["id"], "2026-11-26", "09:45", anlass={"text": "Frage"}, heute=HEUTE, jetzt_hhmm="09:00")
+        v = rm.vorlage(self.con, self.gob, self.lena["id"], termin_id=t["id"], heute=HEUTE)   # am Termin: Meldung gleich dabei
+        self.assertEqual(v["meldung"]["id"], mid)
+        with db.transaktion(self.con):
+            termine.absagen_lehrkraft(self.con, self.gob, t["id"])
+        self.assertIsNone(rm.eingang(self.con, self.gob)[0]["gespraech"])
+
+
+class Markieren(Basis):
+    def test_farbe_heute_und_letzte_woche(self):
+        with db.transaktion(self.con):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "g", HEUTE)
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-02", "y", HEUTE)
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE)        # umfaerben
+        r = self.zeile(self.p2)
+        self.assertEqual((r["ist"], r["status"], r["ampel"]), ({"2026-11-02": "y", "2026-11-05": "r"}, "arbeit", "r"))
+        with db.transaktion(self.con):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", None, HEUTE)       # leer
+        self.assertEqual(self.zeile(self.p2)["ist"], {"2026-11-02": "y"})
+        with self.assertRaisesRegex(lernplan.PlanFehler, "letzten 7"):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-10-26", "g", HEUTE)
+        with self.assertRaisesRegex(lernplan.PlanFehler, "letzten 7"):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-09", "g", HEUTE)        # Zukunft
+        with self.assertRaisesRegex(lernplan.PlanFehler, "kein Unterricht"):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-04", "g", HEUTE)
+        with self.assertRaisesRegex(lernplan.PlanFehler, "zuerst"):
+            lernplan.markieren(self.con, self.lena, self.a1, "2026-11-05", "g", HEUTE)
+        self.assertEqual(lernplan.entscheidungen(self.con, self.lena["id"])[0]["art"], "markiert")
+
+
 class Diktat(Basis):
     def test_ohne_whisper_und_fachwoerter(self):
         from app import diktat

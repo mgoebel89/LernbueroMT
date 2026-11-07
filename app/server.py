@@ -721,6 +721,7 @@ SCHUELER_SCHRITTE = {
     "termin": lambda con, s, d: termine.buchen(con, s, _ganzzahl_feld(d, "zeitfenster_id"), d.get("datum"), str(d.get("beginn") or ""),
                                                d.get("art") or "feedback", d.get("anlass")),
     "termin_absagen": lambda con, s, d: termine.absagen_schueler(con, s, _ganzzahl_feld(d, "termin_id")),
+    "markieren": lambda con, s, d: lernplan.markieren(con, s, _ganzzahl_feld(d, "aufgabe_id"), d.get("datum"), d.get("ampel") or None),
     "bereit": lambda con, s, d: nachweise.bereit_melden(con, s, _ganzzahl_feld(d, "nachweis_id"), rueckmeldung.json_kann(d.get("kann"))),
     "bereit_zurueck": lambda con, s, d: nachweise.zurueckziehen(con, s, _ganzzahl_feld(d, "versuch_id")),
 }
@@ -825,6 +826,19 @@ def api_schueler_nachweise_lk(h, con, daten, kid, sid):
     h.antwort(200, nachweise.fuer_lehrkraft(con, k, _schueler_der_klasse(con, kid, sid)))
 
 
+def api_gespraech_plaetze(h, con, daten, mid):
+    k = h.konto(con)
+    h.antwort(200, {"plaetze": termine.gespraech_plaetze(con, k, _ganzzahl(mid))})
+
+
+def api_gespraech_eintragen(h, con, daten, mid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        termine.gespraech_eintragen(con, k, _ganzzahl(mid), _ganzzahl(daten.get("zeitfenster_id")), daten.get("datum"),
+                                    str(daten.get("beginn") or ""), daten.get("hinweis") or "")
+    h.antwort(200, {"gespraech": termine.gespraech(con, _ganzzahl(mid))})
+
+
 def api_diktat_stand(h, con, daten):
     h.konto(con)
     h.antwort(200, diktat.stand(DATEN_DIR))
@@ -889,10 +903,13 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/plaetze", api_schueler_plaetze),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin", _schueler_schritt(SCHUELER_SCHRITTE["termin"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin/absagen", _schueler_schritt(SCHUELER_SCHRITTE["termin_absagen"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/markieren", _schueler_schritt(SCHUELER_SCHRITTE["markieren"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit", _schueler_schritt(SCHUELER_SCHRITTE["bereit"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit/zurueck", _schueler_schritt(SCHUELER_SCHRITTE["bereit_zurueck"])),
     ("POST", r"/api/versuche/(\d+)/frei", api_versuch_frei),
     ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/nachweise", api_schueler_nachweise_lk),
+    ("GET", r"/api/meldungen/(\d+)/plaetze", api_gespraech_plaetze),
+    ("POST", r"/api/meldungen/(\d+)/gespraech", api_gespraech_eintragen),
     ("GET", r"/api/jetzt", api_jetzt),
     ("POST", r"/api/hilfe/(\d+)/erledigt", api_hilfe_erledigt),
     ("GET", r"/api/rueckmeldung/vorlage", api_rueckmeldung_vorlage),
