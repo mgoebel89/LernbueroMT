@@ -23,7 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, pakete, pdf, qr, rueckmeldung, termine, unterrichtstage, updates
+from . import (VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr, rueckmeldung, termine,
+               unterrichtstage, updates)
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -210,7 +211,8 @@ class Handler(BaseHTTPRequestHandler):
             self.antwort(403, {"fehler": str(f)})
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
                 unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
-                rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler) as f:
+                rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler,
+                nachweise.NachweisFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -295,7 +297,7 @@ def api_abmelden(h, con, daten):
 def api_ich(h, con, daten):
     k = h.konto(con, vorlaeufig_ok=True)
     h.antwort(200, {"konto": k, "version": VERSION, "update": updates.kurz() if k["rolle"] == "admin" else None,
-                    "zu_pruefen": rueckmeldung.zaehler(con, k)})
+                    "zu_pruefen": rueckmeldung.zaehler(con, k), "nachweise": nachweise.zaehler(con, k)})
 
 
 def api_passwort(h, con, daten):
@@ -719,6 +721,8 @@ SCHUELER_SCHRITTE = {
     "termin": lambda con, s, d: termine.buchen(con, s, _ganzzahl_feld(d, "zeitfenster_id"), d.get("datum"), str(d.get("beginn") or ""),
                                                d.get("art") or "feedback", d.get("anlass")),
     "termin_absagen": lambda con, s, d: termine.absagen_schueler(con, s, _ganzzahl_feld(d, "termin_id")),
+    "bereit": lambda con, s, d: nachweise.bereit_melden(con, s, _ganzzahl_feld(d, "nachweis_id"), rueckmeldung.json_kann(d.get("kann"))),
+    "bereit_zurueck": lambda con, s, d: nachweise.zurueckziehen(con, s, _ganzzahl_feld(d, "versuch_id")),
 }
 
 
@@ -727,7 +731,8 @@ SCHUELER_SCHRITTE = {
 def api_jetzt(h, con, daten):
     k = h.konto(con)
     h.antwort(200, {"hilfe": termine.hilfe_reihe(con, k), "termine": termine.termine_heute(con, k),
-                    "eingang": rueckmeldung.eingang(con, k), "entwuerfe": rueckmeldung.entwuerfe(con, k)})
+                    "eingang": rueckmeldung.eingang(con, k), "entwuerfe": rueckmeldung.entwuerfe(con, k),
+                    "bereit": nachweise.bereit_liste(con, k)})
 
 
 def api_hilfe_erledigt(h, con, daten, hid):
@@ -743,7 +748,7 @@ def api_rueckmeldung_vorlage(h, con, daten):
     def zahl(n):
         return _ganzzahl(h.abfrage(n)) if h.abfrage(n) else None
     h.antwort(200, rueckmeldung.vorlage(con, k, _ganzzahl(h.abfrage("schueler")), meldung_id=zahl("meldung"), termin_id=zahl("termin"),
-                                        rueckmeldung_id=zahl("rueckmeldung"), aufgabe_id=zahl("aufgabe")))
+                                        rueckmeldung_id=zahl("rueckmeldung"), aufgabe_id=zahl("aufgabe"), versuch_id=zahl("versuch")))
 
 
 def api_rueckmeldung_speichern(h, con, daten):
@@ -806,6 +811,18 @@ def api_zeitfenster_entfernen(h, con, daten, zid):
     with db.transaktion(con):
         n = termine.zeitfenster_entfernen(con, k, _ganzzahl(zid))
     h.antwort(200, {"abgesagt": n})
+
+
+def api_versuch_frei(h, con, daten, vid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        nachweise.freischalten(con, k, _ganzzahl(vid), bool(daten.get("frei", True)))
+    h.antwort(200, {"bereit": nachweise.bereit_liste(con, k)})
+
+
+def api_schueler_nachweise_lk(h, con, daten, kid, sid):
+    k = h.konto(con)
+    h.antwort(200, nachweise.fuer_lehrkraft(con, k, _schueler_der_klasse(con, kid, sid)))
 
 
 def api_diktat_stand(h, con, daten):
@@ -872,6 +889,10 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/plaetze", api_schueler_plaetze),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin", _schueler_schritt(SCHUELER_SCHRITTE["termin"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin/absagen", _schueler_schritt(SCHUELER_SCHRITTE["termin_absagen"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit", _schueler_schritt(SCHUELER_SCHRITTE["bereit"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit/zurueck", _schueler_schritt(SCHUELER_SCHRITTE["bereit_zurueck"])),
+    ("POST", r"/api/versuche/(\d+)/frei", api_versuch_frei),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/nachweise", api_schueler_nachweise_lk),
     ("GET", r"/api/jetzt", api_jetzt),
     ("POST", r"/api/hilfe/(\d+)/erledigt", api_hilfe_erledigt),
     ("GET", r"/api/rueckmeldung/vorlage", api_rueckmeldung_vorlage),

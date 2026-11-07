@@ -156,7 +156,8 @@ const L = {
       document.body.appendChild(d);
       d.showModal();
       const erstes = form.querySelector('input:not([type=hidden]):not([readonly]), select, textarea');
-      if (erstes) erstes.focus();
+      // ohne Eingabefeld der Hauptknopf: sonst waehlt die Eingabetaste den ersten Knopf einer Skala aus
+      if (erstes) erstes.focus(); else if (ok) ok.focus();
     });
   },
 

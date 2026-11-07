@@ -1,14 +1,16 @@
 // Lehrerbereich, Stufe A: Klassen mit Team und Einsicht, Schueler, Moodle-Teilnehmerliste (Assistent), QR-Karten,
 // Lehrkraefte (Admin), Einstellungen mit Update und Sicherung, eigenes Konto. Jede Entscheidung laeuft ueber ein Overlay.
 // Stufe C: Klassenmatrix, Schuelerplan. Stufe D: "Jetzt" (Hilfe-Reihe, Termine heute, Zu pruefen), Rueckmeldungen und
-// Empfehlungen (rueck.js), Sprech- und Pruefungszeiten (zeitfenster.js).
+// Empfehlungen (rueck.js), Sprech- und Pruefungszeiten (zeitfenster.js). Stufe E: Bereit-Liste der Gelingensnachweise,
+// "in Moodle freigeschaltet", Ergebnis ueber das Rueckmeldungsfenster, Reiter "Gelingensnachweise" auf der Schuelerseite.
 'use strict';
 const { el } = L;
-const S = { konto: null, lehrkraefte: null, update: null, zu_pruefen: 0 };
+const S = { konto: null, lehrkraefte: null, update: null, zu_pruefen: 0, nachweise: 0 };
 const inhalt = document.getElementById('inhalt');
 const NAV = [
   { a: 'uebersicht', text: 'Übersicht', s: 'uebersicht' },
   { a: 'pruefen', text: 'Zu prüfen', s: 'pruefen' },
+  { a: 'nachweise', text: 'Nachweise', s: 'gn' },
   { a: 'zeitfenster', text: 'Zeitfenster', s: 'uhr' },
   { a: 'klassen', text: 'Klassen', s: 'klassen' },
   { a: 'pakete', text: 'Pakete', s: 'pakete' },
@@ -55,6 +57,7 @@ async function start() {
     S.konto = ich.konto;
     S.update = ich.update;
     S.zu_pruefen = ich.zu_pruefen || 0;
+    S.nachweise = ich.nachweise || 0;
   } catch (e) {
     if (e.status === 401) { location.replace('/anmelden'); return; }
     fehlerZeigen(e);
@@ -64,7 +67,8 @@ async function start() {
   L.setzen(document.getElementById('navigation'), NAV.filter(n => !n.admin || S.konto.rolle === 'admin').map(n =>
     el('a', { href: '#' + n.a, 'data-ansicht': n.a }, L.symbol(n.s), n.text,
       n.a === 'einstellungen' && S.update ? el('span', { class: 'chip gelb klein', text: 'Update' }) : null,
-      n.a === 'pruefen' ? el('span', { class: 'chip rot klein nav-zahl', hidden: !S.zu_pruefen, text: String(S.zu_pruefen) }) : null)));
+      n.a === 'pruefen' ? el('span', { class: 'chip rot klein nav-zahl', hidden: !S.zu_pruefen, text: String(S.zu_pruefen) }) : null,
+      n.a === 'nachweise' ? el('span', { class: 'chip lila klein nav-zahl-gn', hidden: !S.nachweise, text: String(S.nachweise) }) : null)));
   document.getElementById('abmelden').addEventListener('click', async () => {
     try { await L.api('POST', '/api/abmelden', {}); } finally { location.href = '/anmelden'; }
   });
@@ -77,16 +81,20 @@ async function start() {
     const ort = document.getElementById('jetzt');
     try {
       const j = await L.api('GET', '/api/jetzt');
-      navZahl(j.eingang.length);
+      navZahl(j.eingang.length, j.bereit.length);
       if (ort && document.body.contains(ort)) ort.replaceWith(jetztKarte(j));
     } catch (e) { if (e.status === 401) location.replace('/anmelden'); }
   }, 10000);
 }
 
-function navZahl(n) {
+function navZahl(n, gn) {
   S.zu_pruefen = n;
   const c = document.querySelector('nav.seite .nav-zahl');
   if (c) { c.textContent = String(n); c.hidden = !n; }
+  if (gn === undefined) return;
+  S.nachweise = gn;
+  const g = document.querySelector('nav.seite .nav-zahl-gn');
+  if (g) { g.textContent = String(gn); g.hidden = !gn; }
 }
 
 async function zeigen() {
@@ -98,6 +106,7 @@ async function zeigen() {
     if (ansicht === 'uebersicht') await uebersichtZeigen(Number(id) || null, Number(id2) || null);
     else if (ansicht === 'schueler') await schuelerZeigen(Number(id), Number(id2), reiter || 'plan');
     else if (ansicht === 'pruefen') await pruefenZeigen();
+    else if (ansicht === 'nachweise') await nachweiseZeigen();
     else if (ansicht === 'zeitfenster') await Zeiten.seite(Number(id) || null);
     else if (ansicht === 'pakete') await Pakete.uebersicht(Number(id) || null);
     else if (ansicht === 'paket') await Pakete.editor(Number(id));
@@ -156,7 +165,52 @@ function jetztKarte(j) {
     j.eingang.length ? el('span', { class: 'chip rot klein', text: String(j.eingang.length) }) : null,
     j.eingang.length > 5 ? el('a', { class: 'rechts klein', href: '#pruefen', text: 'alle' }) : null),
     j.eingang.length ? j.eingang.slice(0, 5).map(m => eingangZeile(m)) : el('p', { class: 'leise klein', text: 'Nichts fertig gemeldet.' }));
-  return el('div', { id: 'jetzt', class: 'stapel jetzt' }, hilfe, termine, pruefen);
+  const bereit = el('div', { class: 'karte stapel' }, el('div', { class: 'zeile' }, el('h3', { text: 'Bereit für Gelingensnachweis' }),
+    j.bereit.length ? el('span', { class: 'chip lila klein', text: String(j.bereit.length) }) : null,
+    j.bereit.length > 5 ? el('a', { class: 'rechts klein', href: '#nachweise', text: 'alle' }) : null),
+    j.bereit.length ? j.bereit.slice(0, 5).map(bereitZeile) : el('p', { class: 'leise klein', text: 'Niemand bereit gemeldet.' }));
+  return el('div', { id: 'jetzt', class: 'stapel jetzt' }, hilfe, termine, pruefen, bereit);
+}
+
+function bereitStand(b) {
+  if (b.termin) return 'Termin ' + L.tag(b.termin.datum) + ' ' + b.termin.beginn;
+  if (b.status === 'frei') return 'seit ' + L.wann(b.frei) + ' in Moodle frei ✓';
+  return b.art === 'moodle' ? 'bereit seit ' + L.wann(b.bereit) : 'bereit, noch kein Termin';
+}
+
+function bereitZeile(b) {
+  const freischalten = b.darf && b.art === 'moodle' && b.status === 'bereit';
+  return el('div', { class: 'jz' }, el('span', { class: 'mz gn-bereit', text: 'GN' }),
+    el('div', {}, el('b', { text: b.name }), el('div', { class: 'leise klein', text: [b.klasse, b.art_text + (b.titel ? ' ' + b.titel : '') + ' · ' + b.paket,
+      b.nr > 1 ? b.nr + '. Versuch' : '', bereitStand(b)].filter(Boolean).join(' · ') }),
+    b.entwurf_id ? el('span', { class: 'chip gelb klein', text: 'Ihr Entwurf' }) : null),
+    freischalten ? el('button', { type: 'button', class: 'klein haupt', onclick: () => freischaltenFragen(b) }, 'in Moodle frei')
+      : el('button', { type: 'button', class: 'klein' + (b.darf ? ' haupt' : ''), onclick: () => Rueck.oeffnen({ schueler: b.schueler_id, versuch: b.versuch_id, danach: zeigen }) },
+        b.darf ? 'Ergebnis' : 'ansehen'));
+}
+
+async function freischaltenFragen(b) {
+  const ok = await L.dialog({
+    titel: 'Test für ' + b.name + ' freigeschaltet?', knopf: 'In Moodle freigeschaltet',
+    inhalt: el('div', { class: 'stapel', style: 'gap:8px' },
+      el('p', { text: 'Schalten Sie den Test in Moodle für ' + b.name + ' frei (Benutzerüberschreibung oder Gruppe) und bestätigen Sie das hier. ' + b.name.split(' ')[0] + ' sieht dann „jetzt schreiben“.' }),
+      b.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: b.moodle_link, target: '_blank', rel: 'noopener' }, L.symbol('extern'), 'Test in Moodle öffnen') : null),
+    speichern: () => L.api('POST', '/api/versuche/' + b.versuch_id + '/frei', { frei: true }),
+  });
+  if (ok) zeigen();
+}
+
+async function nachweiseZeigen() {
+  titelSetzen('Nachweise');
+  const j = await L.api('GET', '/api/jetzt');
+  navZahl(j.eingang.length, j.bereit.length);
+  const arten = [['moodle', 'Moodle-Test: in Moodle freischalten, dann Ergebnis'], ['fachgespraech', 'Fachgespräch'], ['praxis', 'Praktische Prüfung']];
+  L.setzen(inhalt,
+    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Bereit für Gelingensnachweis' })),
+    j.bereit.length ? arten.filter(([a]) => j.bereit.some(b => b.art === a)).map(([a, t]) => el('div', { class: 'karte stapel' }, el('h2', { text: t }),
+      j.bereit.filter(b => b.art === a).map(bereitZeile)))
+      : el('div', { class: 'leer', text: 'Niemand ist gerade bereit gemeldet.' }),
+    el('p', { class: 'leise klein', text: 'Das Ergebnis tragen Sie im Fenster „Rückmeldung“ ein: gelungen oder noch nicht gelungen, wahlweise Punkte oder Note, Text per Diktat, Empfehlungen. Bei „noch nicht“ setzen Sie eine neue Frist, eine Sperre gibt es nicht.' }));
 }
 
 function eingangZeile(m) {
@@ -170,7 +224,7 @@ function eingangZeile(m) {
 async function uebersichtZeigen(kid, pid) {
   titelSetzen('Übersicht');
   const [{ klassen }, j] = await Promise.all([L.api('GET', '/api/klassen'), L.api('GET', '/api/jetzt')]);
-  navZahl(j.eingang.length);
+  navZahl(j.eingang.length, j.bereit.length);
   const meine = klassen.filter(k => k.rolle === 'team' || k.rolle === 'einsicht');
   if (!meine.length) {
     L.setzen(inhalt, el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' })),
@@ -185,6 +239,15 @@ async function uebersichtZeigen(kid, pid) {
     m.pakete.map(p => el('option', { value: p.id, text: p.titel + (p.freigabe ? '' : ' (Entwurf)') })));
   if (m.paket) pw.value = m.paket.id;
   const zelle = (r, c) => {
+    if (c.nachweis) {
+      const z0 = el('span', { class: 'mz ' + c.status, text: c.text });
+      if (!c.versuch_id) return el('td', {}, z0);
+      if (['gn-bereit', 'gn-frei', 'gn-termin'].includes(c.status)) {
+        return el('td', {}, el('button', { type: 'button', class: 'mz-knopf', title: 'bereit gemeldet: Ergebnis eintragen',
+          onclick: () => Rueck.oeffnen({ schueler: r.id, versuch: c.versuch_id, danach: zeigen }) }, z0));
+      }
+      return el('td', {}, el('a', { class: 'mz-knopf', href: '#schueler/' + k.id + '/' + r.id + '/gn', title: c.status === 'gn-gelungen' ? 'gelungen' : 'noch nicht gelungen' }, z0));
+    }
     const inhaltZ = el('span', { class: 'mz ' + c.status + (c.ueber_frist ? ' ueber' : ''), text: c.gruppe ? c.text : MZ[c.status] });
     if (c.status === 'fertig' && c.meldung_id) {
       return el('td', {}, el('button', { type: 'button', class: 'mz-knopf', title: 'fertig gemeldet: Rückmeldung öffnen',
@@ -200,10 +263,13 @@ async function uebersichtZeigen(kid, pid) {
       el('div', { class: 'zeile' }, el('h3', { text: k.name + ' · ' + m.paket.titel })),
       el('div', { class: 'legende' }, Object.keys(MZ).map(s => el('span', {}, el('i', { class: 'mz ' + s, style: 'min-width:20px;height:16px', text: MZ[s] }), MZ_TEXT[s])),
         el('span', {}, el('i', { class: 'mz fehlt', style: 'min-width:20px;height:16px', text: '?' }), 'Wahl fehlt'),
-        el('span', {}, el('i', { class: 'mz geplant ueber', style: 'min-width:20px;height:16px' }), 'Frist überschritten')),
+        el('span', {}, el('i', { class: 'mz geplant ueber', style: 'min-width:20px;height:16px' }), 'Frist überschritten'),
+        m.spalten.some(s => s.typ === 'nachweis') ? el('span', {}, el('i', { class: 'mz gn-bereit', style: 'min-width:20px;height:16px', text: 'B' }), 'GN bereit (M = in Moodle frei, T = Termin)') : null),
       el('div', { class: 'rollbar' }, el('table', { class: 'mx' },
         el('thead', {}, el('tr', {}, el('th', { class: 'links', text: 'Schüler' }),
-          m.spalten.map(s => el('th', { title: s.titel }, el('span', { class: 'kz', text: s.kuerzel }), s.typ === 'gruppe' ? 'Wahl ' + s.waehlen + '/' + s.anzahl : (s.titel || '').slice(0, 12))),
+          m.spalten.map(s => el('th', { title: s.titel }, el('span', { class: 'kz' + (s.typ === 'nachweis' ? ' gn' : ''), text: s.kuerzel }),
+            s.typ === 'gruppe' ? 'Wahl ' + s.waehlen + '/' + s.anzahl : s.typ === 'nachweis' ? ({ moodle: 'Test', praxis: 'Praxis', fachgespraech: 'Gespräch' }[s.art])
+              : (s.titel || '').slice(0, 12))),
           el('th', { text: 'Ampel' }), el('th', { text: 'Emp.' }), el('th', { class: 'links', text: 'Hinweis' }))),
         el('tbody', {}, m.zeilen.map(r => el('tr', {},
           el('td', { class: 'name' }, el('a', { href: '#schueler/' + k.id + '/' + r.id, text: r.name })),
@@ -239,7 +305,7 @@ async function schuelerZeigen(kid, sid, reiter) {
   const name = d.schueler.vorname + ' ' + d.schueler.nachname;
   titelSetzen(name);
   const basis = '#schueler/' + kid + '/' + sid;
-  const REITER = [['plan', 'Plan und Verlauf'], ['kann', 'Kann-Liste'], ['rueck', 'Rückmeldungen und Empfehlungen']];
+  const REITER = [['plan', 'Plan und Verlauf'], ['kann', 'Kann-Liste'], ['rueck', 'Rückmeldungen und Empfehlungen'], ['gn', 'Gelingensnachweise']];
   const teile = [
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: name }),
       r.darf ? el('button', { type: 'button', class: 'haupt', onclick: () => Rueck.oeffnen({ schueler: sid, danach: zeigen }) }, L.symbol('rueck'), 'Rückmeldung schreiben') : null,
@@ -258,6 +324,28 @@ async function schuelerZeigen(kid, sid, reiter) {
         el('td', { text: L.stufeText(k.vorher, zahlen) }), el('td', { text: L.stufeText(k.nachher, zahlen) }),
         el('td', { class: k.nachher && k.lehrkraft && Math.abs(k.nachher - k.lehrkraft) >= 2 ? 'abweichung' : null, text: L.stufeText(k.lehrkraft, zahlen) }))))))))
       : el('div', { class: 'leer', text: 'Noch keine Kann-Liste in den freigegebenen Paketen.' }));
+  } else if (reiter === 'gn') {
+    const g = await L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/nachweise');
+    const ergebnis = (n, v) => (v.status === 'gelungen' ? 'gelungen' : 'noch nicht gelungen') +
+      (v.punkte !== null && v.punkte !== undefined ? ' · ' + String(v.punkte).replace('.', ',') + (n.max_punkte ? '/' + n.max_punkte : '') + ' Punkte' : v.note ? ' · Note ' + v.note : '');
+    teile.push(g.pakete.length ? g.pakete.map(p => el('div', { class: 'karte stapel' }, el('h2', { text: p.titel }),
+      p.nachweise.map(n => el('div', { class: 'stapel gn-karte', style: 'gap:6px;padding-left:10px' },
+        el('div', { class: 'zeile' }, el('b', { text: n.art_text + (n.titel ? ' · ' + n.titel : '') }),
+          el('span', { class: 'leise klein', text: (n.wirksam ? 'Frist ' + L.tag(n.wirksam) + (n.eigene_frist ? ' (neu)' : '') : '') + ' · Kann-Liste ' + n.kann_nachher + '/' + n.kann_gesamt + ' nachher' }),
+          el('span', { class: 'rechts' },
+            n.aktuell ? el('span', { class: 'chip lila', text: n.aktuell.termin ? 'Termin ' + L.tag(n.aktuell.termin.datum) + ' ' + n.aktuell.termin.beginn
+              : n.aktuell.status === 'frei' ? 'in Moodle frei' : 'bereit seit ' + L.wann(n.aktuell.bereit) }) : null,
+            n.aktuell && g.darf && n.art === 'moodle' && n.aktuell.status === 'bereit' ? el('button', { type: 'button', class: 'klein', onclick: () => freischaltenFragen({
+              versuch_id: n.aktuell.id, name: d.schueler.vorname + ' ' + d.schueler.nachname, moodle_link: n.moodle_link }) }, 'in Moodle frei') : null,
+            n.aktuell ? el('button', { type: 'button', class: 'klein' + (g.darf ? ' haupt' : ''), onclick: () => Rueck.oeffnen({ schueler: sid, versuch: n.aktuell.id, danach: zeigen }) },
+              g.darf ? 'Ergebnis' : 'ansehen') : null)),
+        n.versuche.filter(v => v.status === 'gelungen' || v.status === 'nicht').map(v => el('div', { class: 'versuch ' + v.status },
+          el('div', { class: 'zeile' }, el('b', { text: v.nr + '. Versuch' }), el('span', { class: 'sc ' + (v.status === 'gelungen' ? 'angenommen' : 'ueberarbeiten'), text: ergebnis(n, v) }),
+            el('span', { class: 'leise klein', text: L.tag(v.ergebnis_zeit) + ' · ' + (v.ergebnis_von || '') + (v.status === 'nicht' && v.neue_frist ? ' · neue Frist ' + L.tag(v.neue_frist) : '') }),
+            v.rueckmeldung_id ? el('button', { type: 'button', class: 'klein rechts', onclick: () => Rueck.oeffnen({ schueler: sid, rueckmeldung: v.rueckmeldung_id, danach: zeigen }) }, 'ansehen') : null),
+          v.text ? el('p', { class: 'rm-text klein', text: v.text }) : null)),
+        !n.versuche.length ? el('p', { class: 'leise klein', text: 'Noch nicht bereit gemeldet.' }) : null))))
+      : el('div', { class: 'leer', text: 'In den freigegebenen Paketen gibt es keinen Gelingensnachweis.' }));
   } else if (reiter === 'rueck') {
     teile.push(el('div', { class: 'karte stapel' }, el('h2', { text: 'Empfehlungen' }),
       r.empfehlungen.length ? r.empfehlungen.map(e => el('div', { class: 'emp-zeile' + (e.erledigt ? ' erledigt' : '') },

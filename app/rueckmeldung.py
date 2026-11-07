@@ -14,7 +14,7 @@ Ablauf (Konzept Fassung 2):
 import datetime
 import re
 
-from . import db, klassen, lernplan, unterrichtstage as ut
+from . import db, klassen, lernplan, nachweise, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 MAX_TEXT = 6000
@@ -170,7 +170,17 @@ def _rueckmeldung_daten(con, r, klasse_id):
             "meldung_id": r["meldung_id"], "termin_id": r["termin_id"], **_aufgabe_kurz(con, r["aufgabe_id"]),
             "paket_id": r["paket_id"], "paket": paket[0] if paket else None, "text": r["text"], "entscheidung": r["entscheidung"],
             "neue_frist": r["neue_frist"], "erstellt": r["erstellt"], "geaendert": r["geaendert"], "freigegeben": r["freigegeben"],
-            "gelesen": r["gelesen"], "kann": kann, "empfehlungen": emp}
+            "gelesen": r["gelesen"], "kann": kann, "empfehlungen": emp, "versuch_id": r["versuch_id"], "ergebnis": r["ergebnis"],
+            "punkte": r["punkte"], "note": r["note"], "nachweis": _nachweis_kurz(con, r["versuch_id"])}
+
+
+def _nachweis_kurz(con, versuch_id):
+    if not versuch_id:
+        return None
+    v = con.execute("SELECT * FROM versuch WHERE id = ?", (versuch_id,)).fetchone()
+    n = nachweise._nachweis(con, v["nachweis_id"])
+    return {"id": n["id"], "titel": nachweise.nachweis_titel(n), "art": n["art"], "ergebnis": n["ergebnis"], "max_punkte": n["max_punkte"],
+            "moodle_link": n["moodle_link"], "paket_id": n["paket_id"], "versuch": nachweise.versuch_daten(con, v)}
 
 
 def _sichtbare_klassen(con, konto):
@@ -206,7 +216,8 @@ def entwuerfe(con, konto):
     return [{"id": r["id"], "schueler_id": r["schueler_id"], "name": "%s %s" % (r["vorname"], r["nachname"]), "klasse_id": r["klasse_id"],
              "geaendert": r["geaendert"], "meldung_id": r["meldung_id"], **_aufgabe_kurz(con, r["aufgabe_id"])}
             for r in con.execute("SELECT r.*, s.vorname, s.nachname, s.klasse_id FROM rueckmeldung r JOIN schueler s ON s.id = r.schueler_id "
-                                 "WHERE r.verfasser_id = ? AND r.freigegeben IS NULL AND r.meldung_id IS NULL ORDER BY r.geaendert DESC",
+                                 "WHERE r.verfasser_id = ? AND r.freigegeben IS NULL AND r.meldung_id IS NULL AND r.versuch_id IS NULL "
+                                 "ORDER BY r.geaendert DESC",
                                  (konto["id"],))]
 
 
@@ -221,7 +232,7 @@ def _kann_stand(con, schueler_id, kann_zeilen, entwurf_id=None):
             for k in kann_zeilen]
 
 
-def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldung_id=None, aufgabe_id=None, heute=None):
+def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldung_id=None, aufgabe_id=None, versuch_id=None, heute=None):
     """Alles fuer das Fenster "Rueckmeldung": Schueler, Anlass (Meldung, Termin oder frei), Kann-Aussagen mit Schueler-
     und Lehrkraft-Einschaetzung, vorhandener Entwurf der Lehrkraft, waehlbare Aufgaben fuer Empfehlungen, Fristvorschlag."""
     heute = heute or db.heute()
@@ -234,7 +245,7 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
         if r is None or (r["freigegeben"] is None and r["verfasser_id"] != konto["id"]):
             raise RueckmeldungFehler("Diese Rückmeldung gibt es nicht.")
         entwurf = r
-        meldung_id, termin_id, aufgabe_id = r["meldung_id"], r["termin_id"], r["aufgabe_id"]
+        meldung_id, termin_id, aufgabe_id, versuch_id = r["meldung_id"], r["termin_id"], r["aufgabe_id"], r["versuch_id"]
     meldung = None
     if meldung_id:
         meldung = con.execute("SELECT * FROM meldung WHERE id = ? AND schueler_id = ?", (meldung_id, schueler_id)).fetchone()
@@ -249,11 +260,22 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
             raise RueckmeldungFehler("Diesen Termin gibt es nicht.")
         aufgabe_id = aufgabe_id or termin["anlass_aufgabe_id"]
         paket_id = paket_id or termin["anlass_paket_id"]
+        if not versuch_id and termin["nachweis_id"]:   # Pruefungstermin: der Versuch dazu
+            z = con.execute("SELECT id FROM versuch WHERE termin_id = ?", (termin["id"],)).fetchone()
+            versuch_id = z[0] if z else None
         if not meldung and aufgabe_id:   # Termin zu einer Aufgabe, die gerade fertig gemeldet ist: dann gleich mit entscheiden
             meldung = con.execute("SELECT * FROM meldung WHERE schueler_id = ? AND aufgabe_id = ? AND status = 'offen' ORDER BY id DESC LIMIT 1",
                                   (schueler_id, aufgabe_id)).fetchone()
+    versuch = None
+    if versuch_id:
+        versuch = con.execute("SELECT * FROM versuch WHERE id = ? AND schueler_id = ?", (versuch_id, schueler_id)).fetchone()
+        if versuch is None:
+            raise RueckmeldungFehler("Diesen Versuch gibt es nicht.")
+        paket_id = nachweise._nachweis(con, versuch["nachweis_id"])["paket_id"]
+        aufgabe_id = None
     if entwurf is None and darf:
-        bedingung, werte = ("meldung_id = ?", (meldung["id"],)) if meldung else ("termin_id = ?", (termin_id,)) if termin_id else (None, None)
+        bedingung, werte = (("versuch_id = ?", (versuch["id"],)) if versuch else ("meldung_id = ?", (meldung["id"],)) if meldung
+                            else ("termin_id = ?", (termin_id,)) if termin_id else (None, None))
         if bedingung:
             entwurf = con.execute("SELECT r.*, l.name AS verfasser FROM rueckmeldung r JOIN lehrkraft l ON l.id = r.verfasser_id WHERE "
                                   + bedingung + " AND r.verfasser_id = ? AND r.freigegeben IS NULL", werte + (konto["id"],)).fetchone()
@@ -283,7 +305,8 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
             **_aufgabe_kurz(con, a["id"] if a else None), "paket_id": paket_id,
             "kann": _kann_stand(con, schueler_id, kann_zeilen, entwurf["id"] if entwurf and not entwurf["freigegeben"] else None),
             "entwurf": daten, "auswahl": auswahl, "frist_vorschlag": neue_frist_vorschlag(con, s["klasse_id"], heute),
-            "einschaetzer": con.execute("SELECT einschaetzer FROM klasse WHERE id = ?", (s["klasse_id"],)).fetchone()[0]}
+            "einschaetzer": con.execute("SELECT einschaetzer FROM klasse WHERE id = ?", (s["klasse_id"],)).fetchone()[0],
+            "nachweis": _nachweis_kurz(con, versuch["id"]) if versuch else None}
 
 
 def _empfehlungen_pruefen(con, klasse_id, liste, heute):
@@ -329,6 +352,13 @@ def speichern(con, konto, d, freigeben=False, heute=None):
     termin_id = alt["termin_id"] if alt else (_id(d["termin_id"], "Termin") if d.get("termin_id") else None)
     aufgabe_id = alt["aufgabe_id"] if alt else (_id(d["aufgabe_id"], "Aufgabe") if d.get("aufgabe_id") else None)
     paket_id = alt["paket_id"] if alt else (_id(d["paket_id"], "Paket") if d.get("paket_id") else None)
+    versuch_id = alt["versuch_id"] if alt else (_id(d["versuch_id"], "Versuch") if d.get("versuch_id") else None)
+    versuch = None
+    if versuch_id:
+        versuch = con.execute("SELECT * FROM versuch WHERE id = ? AND schueler_id = ?", (versuch_id, s["id"])).fetchone()
+        if versuch is None:
+            raise RueckmeldungFehler("Diesen Versuch gibt es nicht.")
+        paket_id, aufgabe_id, meldung_id = nachweise._nachweis(con, versuch["nachweis_id"])["paket_id"], None, None
     meldung = None
     if meldung_id:
         meldung = con.execute("SELECT * FROM meldung WHERE id = ? AND schueler_id = ?", (meldung_id, s["id"])).fetchone()
@@ -352,7 +382,26 @@ def speichern(con, konto, d, freigeben=False, heute=None):
         raise RueckmeldungFehler("Ungültige Entscheidung.")
     if entscheidung and not meldung:
         raise RueckmeldungFehler("Eine Entscheidung gibt es nur zu einer fertig gemeldeten Aufgabe.")
-    neue_frist = _datum_oder_none(d.get("neue_frist"), "die neue Frist") if entscheidung == "ueberarbeiten" else None
+    ergebnis = d.get("ergebnis") or None
+    if ergebnis not in (None, "gelungen", "nicht"):
+        raise RueckmeldungFehler("Ungültiges Ergebnis.")
+    if ergebnis and not versuch:
+        raise RueckmeldungFehler("Ein Ergebnis gibt es nur zu einem Gelingensnachweis.")
+    punkte = note = None
+    if versuch:
+        n = nachweise._nachweis(con, versuch["nachweis_id"])
+        if n["ergebnis"] == "punkte" and d.get("punkte") not in (None, ""):
+            try:
+                punkte = float(str(d["punkte"]).replace(",", "."))
+            except ValueError:
+                raise RueckmeldungFehler("Bitte die Punkte als Zahl angeben.")
+            if not 0 <= punkte <= (n["max_punkte"] or 1000):
+                raise RueckmeldungFehler("Punkte: 0 bis %s." % n["max_punkte"])
+        if n["ergebnis"] == "note" and d.get("note") not in (None, ""):
+            note = re.sub(r"\s+", "", str(d["note"]))[:5]
+            if not re.fullmatch(r"[1-6][+-]?|[1-6],\d", note):
+                raise RueckmeldungFehler("Note wie 2, 2+ oder 2,3 angeben.")
+    neue_frist = _datum_oder_none(d.get("neue_frist"), "die neue Frist") if entscheidung == "ueberarbeiten" or ergebnis == "nicht" else None
     kann_erlaubt = {k["id"] for k in (_kann_der_aufgabe(con, a["id"]) if a else con.execute(
         "SELECT id FROM kann_aussage WHERE paket_id = ? AND aktiv = 1", (paket_id,)).fetchall() if paket_id else [])}
     kann = {}
@@ -372,18 +421,25 @@ def speichern(con, konto, d, freigeben=False, heute=None):
             raise RueckmeldungFehler("Bitte eine neue Frist für die Überarbeitung setzen.")
         if neue_frist and neue_frist < heute.isoformat():
             raise RueckmeldungFehler("Die neue Frist liegt in der Vergangenheit.")
-        if not text and not empfehlungen and not entscheidung:
+        if versuch and versuch["status"] not in nachweise.OFFEN:
+            raise RueckmeldungFehler("Dieser Versuch ist schon abgeschlossen (oder zurückgezogen).")
+        if versuch and not ergebnis:
+            raise RueckmeldungFehler("Bitte das Ergebnis wählen: gelungen oder noch nicht gelungen.")
+        if ergebnis == "nicht" and not neue_frist:
+            raise RueckmeldungFehler("Bitte eine neue Frist setzen.")
+        if not text and not empfehlungen and not entscheidung and not ergebnis:
             raise RueckmeldungFehler("Die Rückmeldung ist leer.")
     jetzt = db.jetzt()
     if alt:
         rid = alt["id"]
-        con.execute("UPDATE rueckmeldung SET text = ?, entscheidung = ?, neue_frist = ?, geaendert = ? WHERE id = ?",
-                    (text, entscheidung, neue_frist, jetzt, rid))
+        con.execute("UPDATE rueckmeldung SET text = ?, entscheidung = ?, neue_frist = ?, ergebnis = ?, punkte = ?, note = ?, geaendert = ? "
+                    "WHERE id = ?", (text, entscheidung, neue_frist, ergebnis, punkte, note, jetzt, rid))
     else:
         rid = con.execute("INSERT INTO rueckmeldung (schueler_id, verfasser_id, meldung_id, termin_id, aufgabe_id, paket_id, text, "
-                          "entscheidung, neue_frist, erstellt, geaendert) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          "entscheidung, neue_frist, erstellt, geaendert, versuch_id, ergebnis, punkte, note) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                           (s["id"], konto["id"], meldung["id"] if meldung else None, termin_id, aufgabe_id, paket_id, text,
-                           entscheidung, neue_frist, jetzt, jetzt)).lastrowid
+                           entscheidung, neue_frist, jetzt, jetzt, versuch_id, ergebnis, punkte, note)).lastrowid
     con.execute("DELETE FROM rueckmeldung_kann WHERE rueckmeldung_id = ?", (rid,))
     con.executemany("INSERT INTO rueckmeldung_kann (rueckmeldung_id, kann_id, stufe) VALUES (?, ?, ?)", [(rid, k, v) for k, v in kann.items()])
     con.execute("DELETE FROM empfehlung WHERE rueckmeldung_id = ? AND freigegeben IS NULL", (rid,))
@@ -391,6 +447,8 @@ def speichern(con, konto, d, freigeben=False, heute=None):
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [(s["id"], e[0], rid, konto["id"], e[1], e[2], e[3], jetzt) for e in empfehlungen])
     if freigeben:
         _freigeben(con, konto, s, rid, meldung, a, entscheidung, neue_frist, kann, empfehlungen, jetzt)
+        if versuch:
+            nachweise.ergebnis_anwenden(con, konto, s, versuch["id"], ergebnis, punkte, note, neue_frist, jetzt)
     return rid
 
 

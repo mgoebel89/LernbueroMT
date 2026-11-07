@@ -259,11 +259,18 @@ def zeitfenster_entfernen(con, konto, zid):
     if z["lehrkraft_id"] != konto["id"]:
         raise TerminFehler("Nur die eigene Sprech- oder Prüfungszeit lässt sich entfernen.")
     heute = db.heute().isoformat()
+    ids = [z0[0] for z0 in con.execute("SELECT id FROM termin WHERE zeitfenster_id = ? AND abgesagt IS NULL AND datum >= ?", (zid, heute))]
     abgesagt = con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = ? WHERE zeitfenster_id = ? AND abgesagt IS NULL AND datum >= ?",
                            (db.jetzt(), "lehrkraft:" + konto["kuerzel"], zid, heute)).rowcount
+    _versuche_loesen(con, ids)
     con.execute("UPDATE zeitfenster SET aktiv = 0 WHERE id = ?", (zid,))
     db.ereignis(con, z["klasse_id"], None, "lehrkraft", konto["kuerzel"], "zeitfenster_entfernt", zeitfenster_id=zid, abgesagt=abgesagt)
     return abgesagt
+
+
+def _versuche_loesen(con, termin_ids):
+    """Ein abgesagter Pruefungstermin: der Versuch bleibt "bereit", der Schueler bucht neu."""
+    con.executemany("UPDATE versuch SET termin_id = NULL WHERE termin_id = ?", [(t,) for t in termin_ids])
 
 
 def _gebucht(con, zid, datum):
@@ -273,6 +280,11 @@ def _gebucht(con, zid, datum):
 
 
 def _anlass_text(con, t):
+    if t["nachweis_id"]:
+        n = con.execute("SELECT n.titel, p.titel AS paket FROM nachweis n JOIN paket p ON p.id = n.paket_id WHERE n.id = ?",
+                        (t["nachweis_id"],)).fetchone()
+        if n:
+            return "Gelingensnachweis " + (n["titel"] + " · " if n["titel"] else "") + n["paket"]
     if t["anlass_aufgabe_id"]:
         a = con.execute("SELECT kuerzel, titel FROM aufgabe WHERE id = ?", (t["anlass_aufgabe_id"],)).fetchone()
         if a:
@@ -317,7 +329,7 @@ def termine_heute(con, konto, heute=None):
                          "WHERE z.lehrkraft_id = ? AND t.datum = ? AND t.abgesagt IS NULL ORDER BY t.beginn", (konto["id"], heute)):
         aus.append({"id": t["id"], "beginn": t["beginn"], "ende": t["ende"], "art": t["art"], "schueler_id": t["schueler_id"],
                     "name": "%s %s" % (t["vorname"], t["nachname"]), "klasse_id": t["klasse_id"], "klasse": t["klasse"],
-                    "anlass": _anlass_text(con, t), "anlass_aufgabe_id": t["anlass_aufgabe_id"],
+                    "anlass": _anlass_text(con, t), "anlass_aufgabe_id": t["anlass_aufgabe_id"], "nachweis_id": t["nachweis_id"],
                     "rueckmeldung": bool(con.execute("SELECT 1 FROM rueckmeldung WHERE termin_id = ? AND freigegeben IS NOT NULL", (t["id"],)).fetchone())})
     return aus
 
@@ -328,6 +340,7 @@ def absagen_lehrkraft(con, konto, termin_id):
         raise TerminFehler("Diesen Termin gibt es nicht (mehr).")
     klassen.pruefen(con, t["klasse_id"], konto, "aendern")
     con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = ? WHERE id = ?", (db.jetzt(), "lehrkraft:" + konto["kuerzel"], termin_id))
+    _versuche_loesen(con, [termin_id])
     db.ereignis(con, t["klasse_id"], t["schueler_id"], "lehrkraft", konto["kuerzel"], "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
 
 
@@ -367,14 +380,28 @@ def termine_schueler(con, schueler, heute=None):
 
 
 def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=None, heute=None, jetzt_hhmm=None):
-    """anlass: {aufgabe_id} | {paket_id} | {text} (allgemein)."""
+    """Feedback: anlass {aufgabe_id} | {paket_id} | {text} (allgemein), nur in Sprechzeiten.
+    Fachgespraech / praktische Pruefung: anlass {versuch_id} (bereit gemeldet), nur in Pruefungszeiten."""
     heute = heute or db.heute()
     jetzt_hhmm = jetzt_hhmm or _jetzt_hhmm()
+    if art not in TERMINARTEN:
+        raise TerminFehler("Unbekannte Terminart.")
+    anlass = anlass if isinstance(anlass, dict) else {}
+    versuch = None
     if art != "feedback":
-        raise TerminFehler("Fachgespräch und praktische Prüfung bucht man mit dem Gelingensnachweis.")
+        try:
+            versuch = con.execute("SELECT v.*, n.art AS nachweisart, n.paket_id FROM versuch v JOIN nachweis n ON n.id = v.nachweis_id "
+                                  "WHERE v.id = ? AND v.schueler_id = ?", (int(anlass.get("versuch_id")), schueler["id"])).fetchone()
+        except (TypeError, ValueError):
+            versuch = None
+        if versuch is None or versuch["status"] != "bereit" or versuch["nachweisart"] != art:
+            raise TerminFehler("Melde dich zuerst für diesen Gelingensnachweis bereit.")
+        if versuch["termin_id"] and con.execute("SELECT 1 FROM termin WHERE id = ? AND abgesagt IS NULL", (versuch["termin_id"],)).fetchone():
+            raise TerminFehler("Für diesen Gelingensnachweis hast du schon einen Termin. Sage ihn ab, wenn du einen anderen willst.")
     z = con.execute("SELECT * FROM zeitfenster WHERE id = ? AND aktiv = 1", (zeitfenster_id,)).fetchone()
     if z is None or z["klasse_id"] != schueler["klasse_id"] or z["art"] != TERMINARTEN[art]:
-        raise TerminFehler("Feedbackgespräche gibt es nur in einer Sprechzeit deiner Klasse.")
+        raise TerminFehler("Feedbackgespräche gibt es nur in einer Sprechzeit deiner Klasse." if art == "feedback"
+                           else "Fachgespräch und praktische Prüfung gibt es nur in einer Prüfungszeit deiner Klasse.")
     try:
         d = ut.datum(datum)
     except ut.TageFehler:
@@ -382,19 +409,20 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
     if d < heute or d > heute + VORAUS_TAGE * TAG or (d == heute and str(beginn) <= jetzt_hhmm):
         raise TerminFehler("Dieser Termin lässt sich nicht (mehr) buchen.")
     if d not in [x for x, t in fenstertage(con, z, d, d) if t and t["status"] == "unterricht"]:
-        raise TerminFehler("An diesem Tag gibt es keine Sprechzeit.")
+        raise TerminFehler("An diesem Tag gibt es keine %s." % ARTEN[z["art"]])
     platz = next(((b, e) for b, e in plaetze(z) if b == beginn), None)
     if platz is None:
         raise TerminFehler("Diesen Platz gibt es nicht.")
-    if con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND abgesagt IS NULL AND (datum > ? OR "
-                            "(datum = ? AND ende > ?))", (schueler["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
+    if art == "feedback" and con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND abgesagt IS NULL AND (datum > ? OR "
+                                         "(datum = ? AND ende > ?))", (schueler["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
         raise TerminFehler("Du hast schon einen offenen Feedbacktermin. Sage ihn ab, wenn du einen anderen willst.")
     if beginn in _gebucht(con, z["id"], d.isoformat()):
         raise TerminFehler("Dieser Platz ist gerade vergeben worden. Bitte einen anderen wählen.")
-    anlass = anlass if isinstance(anlass, dict) else {}
     aufgabe_id = paket_id = None
     text = re.sub(r"\s+", " ", str(anlass.get("text") or "")).strip()[:200]
-    if anlass.get("aufgabe_id"):
+    if versuch:
+        paket_id, text = versuch["paket_id"], ""
+    elif anlass.get("aufgabe_id"):
         a = con.execute("SELECT a.id, a.paket_id, p.klasse_id FROM aufgabe a JOIN paket p ON p.id = a.paket_id WHERE a.id = ?",
                         (int(anlass["aufgabe_id"]),)).fetchone()
         if a is None or a["klasse_id"] != schueler["klasse_id"]:
@@ -408,8 +436,11 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
     elif not text:
         raise TerminFehler("Bitte den Anlass angeben: eine Aufgabe, ein Paket oder kurz, worum es geht.")
     tid = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
-                      "anlass_text, gebucht) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      (z["id"], schueler["id"], d.isoformat(), platz[0], platz[1], art, aufgabe_id, paket_id, text, db.jetzt())).lastrowid
+                      "anlass_text, nachweis_id, gebucht) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (z["id"], schueler["id"], d.isoformat(), platz[0], platz[1], art, aufgabe_id, paket_id, text,
+                       versuch["nachweis_id"] if versuch else None, db.jetzt())).lastrowid
+    if versuch:
+        con.execute("UPDATE versuch SET termin_id = ? WHERE id = ?", (tid, versuch["id"]))
     db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", "termin_gebucht", datum=d.isoformat(), beginn=platz[0],
                 terminart=art, aufgabe_id=aufgabe_id)
     return tid
@@ -423,4 +454,5 @@ def absagen_schueler(con, schueler, termin_id, heute=None):
     if t["datum"] <= heute.isoformat():
         raise TerminFehler("Absagen geht nur bis zum Vortag. Bitte sprich deine Lehrkraft an.")
     con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = 'schueler' WHERE id = ?", (db.jetzt(), termin_id))
+    _versuche_loesen(con, [termin_id])
     db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])

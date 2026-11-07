@@ -337,6 +337,35 @@ MIGRATIONEN = [
         abgesagt_von TEXT);
     CREATE INDEX termin_platz ON termin (zeitfenster_id, datum, beginn)
     """,
+    # 5: Gelingensnachweise (Stufe E). Ein Versuch je Bereitmeldung; das Ergebnis schreibt die Lehrkraft ueber eine
+    # Rueckmeldung (Entwurf, Diktat, Kann-Einschaetzung, Empfehlungen), die den Versuch bei der Freigabe abschliesst.
+    """
+    CREATE TABLE versuch (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        nachweis_id INTEGER NOT NULL REFERENCES nachweis(id) ON DELETE CASCADE,
+        nr INTEGER NOT NULL,
+        bereit TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'bereit' CHECK (status IN ('bereit', 'frei', 'gelungen', 'nicht', 'zurueckgezogen')),
+        frei TEXT,
+        frei_von INTEGER REFERENCES lehrkraft(id),
+        termin_id INTEGER REFERENCES termin(id) ON DELETE SET NULL,
+        ergebnis_zeit TEXT,
+        ergebnis_von INTEGER REFERENCES lehrkraft(id),
+        punkte REAL,
+        note TEXT,
+        neue_frist TEXT);
+    CREATE INDEX versuch_schueler ON versuch (schueler_id, nachweis_id);
+    CREATE TABLE nachweis_frist (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        nachweis_id INTEGER NOT NULL REFERENCES nachweis(id) ON DELETE CASCADE,
+        frist TEXT NOT NULL,
+        PRIMARY KEY (schueler_id, nachweis_id));
+    ALTER TABLE rueckmeldung ADD COLUMN versuch_id INTEGER REFERENCES versuch(id) ON DELETE SET NULL;
+    ALTER TABLE rueckmeldung ADD COLUMN ergebnis TEXT;
+    ALTER TABLE rueckmeldung ADD COLUMN punkte REAL;
+    ALTER TABLE rueckmeldung ADD COLUMN note TEXT
+    """,
 ]
 
 

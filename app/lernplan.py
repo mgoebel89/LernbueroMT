@@ -16,7 +16,7 @@ Jede Aenderung landet zusaetzlich im Ereignisprotokoll.
 """
 import datetime
 
-from . import db, pakete, unterrichtstage as ut
+from . import db, nachweise, pakete, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 AMPELN = ("g", "y", "r")
@@ -177,6 +177,7 @@ def zustand(con, schueler, heute=None):
             paket["kann"].append({"id": k["id"], "kuerzel": k["kuerzel"], "text": k["text"], "aufgaben_kuerzel": k["aufgaben_kuerzel"],
                                   "aufgaben": k["aufgaben"], "vorher": kann_wert.get((k["id"], "vorher")),
                                   "nachher": kann_wert.get((k["id"], "nachher")), "lehrkraft": kann_lk.get(k["id"])})
+        paket["nachweise"] = [nachweise.stand(con, schueler, n, paket["kann"], heute) for n in s["nachweise"]]
         if paket["kann"] and any(k["vorher"] is None for k in paket["kann"]):
             hinweise["kann_vorher"].append({"paket_id": s["id"], "titel": s["titel"]})
         aus.append(paket)
@@ -361,12 +362,20 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
         else:
             spalten.append({"typ": "gruppe", "id": e["id"], "kuerzel": e["buchstabe"], "titel": e["titel"] or "Wahlgruppe " + e["buchstabe"],
                             "waehlen": e["waehlen"], "anzahl": len(e["aufgaben"]), "aufgaben": e["aufgaben"]})
+    for n in s["nachweise"]:
+        spalten.append({"typ": "nachweis", "id": n["id"], "kuerzel": "GN", "titel": nachweise.ART_TEXT[n["art"]] + (" · " + n["titel"] if n["titel"] else ""),
+                        "art": n["art"]})
     zeilen = []
     for sch in con.execute("SELECT * FROM schueler WHERE klasse_id = ? AND aktiv = 1 ORDER BY nachname, vorname", (klasse_id,)).fetchall():
         st_alle = _stand(con, sch["id"], klasse_id)
         wahl = st_alle["wahl"]
         zellen, hinweise, ampeln = [], [], []
         for sp in spalten:
+            if sp["typ"] == "nachweis":
+                c = nachweise.matrix_zelle(con, sch["id"], sp, heute)
+                zellen.append({"status": "gn-" + c["status"], "ueber_frist": False, "text": c["text"], "gruppe": True, "nachweis": True,
+                               "versuch_id": c["versuch_id"], "aufgabe_id": None, "meldung_id": None})
+                continue
             if sp["typ"] == "aufgabe":
                 a = next(x for x in _alle_aufgaben(s) if x["id"] == sp["id"])
                 st = aufgaben_status(a, st_alle, heute)
@@ -395,7 +404,7 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
         offen_emp = sum(1 for liste in st_alle["emp"].values() for e in liste if not e["erledigt"])
         zeilen.append({"id": sch["id"], "name": "%s %s" % (sch["vorname"], sch["nachname"]), "zellen": zellen, "ampel": schlechteste,
                        "empfehlungen": offen_emp,
-                       "hinweis": hinweise[0] if hinweise else ("noch nichts geplant" if all(z["status"] in ("offen", "fehlt") for z in zellen) else "")})
+                       "hinweis": hinweise[0] if hinweise else ("noch nichts geplant" if all(z["status"] in ("offen", "fehlt") for z in zellen if not z.get("nachweis")) else "")})
     return {"pakete": [{"id": x["id"], "titel": x["titel"], "freigabe": x["freigabe"]} for x in alle],
             "paket": {"id": p["id"], "titel": p["titel"], "freigabe": p["freigabe"]}, "spalten": [
                 {k: v for k, v in sp.items() if k != "aufgaben"} for sp in spalten], "zeilen": zeilen}

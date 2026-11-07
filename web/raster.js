@@ -7,6 +7,8 @@ const Raster = (() => {
   const STATUS = { offen: ['offen', 'offen'], geplant: ['geplant', 'geplant'], arbeit: ['arbeit', 'in Arbeit'],
     fertig: ['fertig', 'fertig gemeldet'], angenommen: ['angenommen', 'angenommen'], ueberarbeiten: ['ueberarbeiten', 'überarbeiten'] };
   const plant = t => t.status === 'unterricht' || t.status === 'ohne';
+  const NW_STATUS = { bereit: ['fertig', 'bereit gemeldet'], frei: ['fertig', 'in Moodle frei'], termin: ['fertig', 'Termin gebucht'],
+    gelungen: ['angenommen', 'gelungen'], nicht: ['ueberarbeiten', 'noch nicht gelungen'] };
 
   function statusChip(r) {
     if (r.ueber_frist) return el('span', { class: 'sc spaet', text: 'Frist überschritten' });
@@ -49,8 +51,10 @@ const Raster = (() => {
         koerper.appendChild(zeile(r, r.art === 'wahl' ? gruppe : null));
       });
       p.nachweise.forEach(n => koerper.appendChild(el('tr', { class: 'nw' },
-        el('td', { class: 'auf' }, el('span', { class: 'kz', text: '◆' }), 'Gelingensnachweis' + (n.titel ? ': ' + n.titel : '')),
-        el('td', { class: 'st leise klein', text: n.wirksam ? 'bis ' + L.tag(n.wirksam) : '' }),
+        el('td', { class: 'auf' }, o.nachweis ? el('button', { type: 'button', class: 'kz', text: '◆', title: 'Gelingensnachweis öffnen', onclick: () => o.nachweis(n) })
+          : el('span', { class: 'kz', text: '◆' }), 'Gelingensnachweis: ' + (n.art_text || '') + (n.titel ? ' · ' + n.titel : '')),
+        el('td', { class: 'st' }, NW_STATUS[n.status] ? el('span', { class: 'sc ' + NW_STATUS[n.status][0], text: NW_STATUS[n.status][1] }) : null,
+          n.wirksam && !n.gelungen ? el('span', { class: 'leise klein' + (n.ueber_frist ? ' rot-text' : ''), text: ' bis ' + L.tag(n.wirksam) }) : null),
         tage.map(t => el('td', { class: zellKlasse(t, z) }, n.wirksam === t.datum ? el('span', { class: 'frist', text: 'F' }) : null)))));
     });
     const tabelle = el('table', { class: 'lp' }, el('thead', {}, kopf), koerper);
@@ -155,6 +159,12 @@ const Raster = (() => {
       hilfe: () => 'Hilfe gerufen', hilfe_zurueck: () => 'Hilfe zurückgezogen', hilfe_erledigt: () => 'Hilfe erledigt',
       termin_gebucht: () => 'Feedbacktermin gebucht: ' + L.tag(d.datum) + ' ' + d.beginn,
       termin_abgesagt: () => 'Termin ' + L.tag(d.datum) + ' ' + d.beginn + ' abgesagt',
+      bereit: () => 'bereit gemeldet für den Gelingensnachweis (' + d.paket + ', ' + d.versuch + '. Versuch)',
+      bereit_zurueck: () => 'Bereitmeldung zurückgezogen (' + d.versuch + '. Versuch)',
+      freigeschaltet: () => 'Test in Moodle freigeschaltet (' + d.versuch + '. Versuch)', freischaltung_zurueck: () => 'Freischaltung zurückgenommen',
+      nachweis_ergebnis: () => 'Gelingensnachweis, ' + d.versuch + '. Versuch: ' + (d.ergebnis === 'gelungen' ? 'gelungen' : 'noch nicht gelungen, neue Frist ' + L.tag(d.neue_frist))
+        + (d.punkte !== null && d.punkte !== undefined ? ' (' + d.punkte + ' Punkte)' : d.note ? ' (Note ' + d.note + ')' : ''),
+      zeitfenster_angelegt: () => 'Zeitfenster angelegt', zeitfenster_entfernt: () => 'Zeitfenster entfernt',
     };
     try { return (texte[e.art] || (() => e.art))(); } catch (f) { return e.art; }
   }

@@ -2,7 +2,8 @@
 // Stufe C: Mein Plan (Raster), Heute mit „Tag abschließen“, Kann-Liste vorher.
 // Stufe D: Aufgabe öffnen und fertig melden (mit Kann-Aussagen „nachher“), Hilfe-Knopf live mit Platz in der Reihe,
 // Feedbacktermin buchen und absagen, Rückmeldungen und Empfehlungen. Jede Entscheidung läuft über ein Overlay,
-// nur der Hilfe-Knopf wirkt mit einem Tipp. Gelingensnachweise (Stufe E) folgen.
+// nur der Hilfe-Knopf wirkt mit einem Tipp.
+// Stufe E: Gelingensnachweise: bereit melden (ganze Kann-Liste „nachher“), Prüfungstermin buchen, Ergebnisse und Versuche.
 'use strict';
 const { el } = L;
 const CODE = location.pathname.split('/')[2].toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -12,7 +13,7 @@ const BEREICHE = [
   { s: 'heute', lang: 'Heute', kurz: 'Heute' },
   { s: 'kann', lang: 'Kann-Liste', kurz: 'Kann ich' },
   { s: 'rueck', lang: 'Rückmeldungen', kurz: 'Rückmeld.' },
-  { s: 'gn', lang: 'Gelingensnachweise', kurz: 'Nachweise', text: 'Bereit melden, Termin buchen, Ergebnis ansehen.', stufe: 'E' },
+  { s: 'gn', lang: 'Gelingensnachweise', kurz: 'Nachweise' },
 ];
 const AMPELN = [['g', 'im Plan'], ['y', 'Probleme, schaffe ich wohl'], ['r', 'ohne Hilfe nicht weiter']];
 let ich = null, z = null, gefragt = false;
@@ -103,9 +104,7 @@ function zeigen() {
   else if (b.s === 'heute') heuteZeigen();
   else if (b.s === 'kann') kannZeigen();
   else if (b.s === 'rueck') rueckZeigen();
-  else L.setzen(inhalt, el('h1', { class: 'dreieck', text: b.lang }),
-    el('div', { class: 'karte platzhalter' }, el('b', { class: 'ik ' + b.s }, L.symbol(b.s)), el('p', { text: b.text }),
-      el('p', { class: 'leise', text: 'Dieser Bereich kommt mit Stufe ' + b.stufe + '.' })));
+  else gnZeigen();
   hilfeAnzeigen();
   leisteZahlen();
   if (!gefragt) { gefragt = true; nachfragen(); }
@@ -121,7 +120,7 @@ function planZeigen() {
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Mein Plan' }),
     n ? el('div', { class: 'banner' }, 'Nächste Frist: ', el('b', { text: n.kuerzel + ' ' + n.titel }), ' am ' + L.tag(n.wirksam) + '.') : null,
-    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, planen, waehlen: wahlFragen, oeffnen: aufgabeOeffnen })
+    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, planen, waehlen: wahlFragen, oeffnen: aufgabeOeffnen, nachweis: () => { location.hash = 'gn'; } })
       : el('div', { class: 'leer', text: 'Noch ist kein Lernpaket für dich freigegeben.' }),
     z.pakete.length ? el('p', { class: 'leise klein', text: 'Kürzel antippen: Aufgabe öffnen, fertig melden. Name antippen: Aufgabe in Moodle.' }) : null,
     el('p', { class: 'leise klein' }, 'Nicht du? ', el('a', { href: '/?neu', text: 'Anderen Code eingeben' })));
@@ -146,6 +145,9 @@ function heuteZeigen() {
     z.ungelesen ? el('a', { class: 'karte neu-rueck', href: '#rueck' }, el('b', { class: 'ik rueck' }, L.symbol('rueck')),
       el('div', {}, el('b', { text: z.ungelesen === 1 ? 'Neue Rückmeldung' : z.ungelesen + ' neue Rückmeldungen' }), el('div', { class: 'leise klein', text: 'antippen zum Lesen' }))) : null,
     unterricht && t.status !== 'ohne' ? hilfeBlock(true) : null,
+    alleNachweise().filter(n => n.aktuell && n.aktuell.status === 'frei').map(n => el('a', { class: 'karte neu-rueck gn-frei', href: '#gn' },
+      el('b', { class: 'ik gn' }, L.symbol('gn')), el('div', {}, el('b', { text: n.art_text + ' ist in Moodle freigeschaltet' }),
+        el('div', { class: 'leise klein', text: n.paket + ' · antippen' })))),
     el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Für heute geplant' }),
       heute.length ? heute.map(r => el('div', { class: 'heute-zeile' },
         el('button', { type: 'button', class: 'kz', text: r.kuerzel, onclick: () => aufgabeOeffnen(r) }),
@@ -162,16 +164,22 @@ function heuteZeigen() {
       el('div', { class: 'liste-klein' }, fristen.map(r => el('div', {}, el('span', { class: 'dat', text: L.tag(r.wirksam) }), r.kuerzel + ' ' + r.titel)))) : null);
 }
 
+function alleNachweise() {
+  return [].concat(...z.pakete.map(p => p.nachweise.map(n => Object.assign({ paket: p.titel, paket_id: p.id }, n))));
+}
+
+const TERMINART = { feedback: 'Feedback', fachgespraech: 'Fachgespräch', praxis: 'Praktische Prüfung' };
+
 function termineKarte() {
   const offen = z.termine.filter(t => !t.abgesagt && t.art === 'feedback');
-  return el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Feedback' }),
+  return el('div', { class: 'karte stapel' }, el('div', { class: 'etikett', text: 'Termine' }),
     z.termine.length ? el('div', { class: 'stapel', style: 'gap:6px' }, z.termine.map(t => el('div', { class: 'termin-zeile' + (t.abgesagt ? ' abgesagt' : '') },
-      el('div', {}, el('b', { text: L.tag(t.datum) + ' · ' + t.beginn }), ' · ' + t.anlass,
+      el('div', {}, el('b', { text: L.tag(t.datum) + ' · ' + t.beginn }), ' · ' + (t.art === 'feedback' ? t.anlass : TERMINART[t.art] + ' · ' + t.anlass),
         el('div', { class: 'leise klein', text: t.abgesagt ? 'abgesagt von der Lehrkraft, bitte neu buchen' : 'bei ' + t.lehrkraft +
           (t.darf_absagen ? ' · absagen bis ' + L.tag(t.absagen_bis) : ' · absagen nur noch bei der Lehrkraft') })),
       t.darf_absagen ? el('button', { type: 'button', class: 'klein', onclick: () => absagen(t), text: 'absagen' }) : null)))
       : el('p', { class: 'leise klein', text: 'Kein Termin gebucht.' }),
-    offen.length ? null : el('button', { type: 'button', style: 'justify-self:start', onclick: terminBuchen }, L.symbol('uhr'), 'Feedbacktermin buchen'));
+    offen.length ? null : el('button', { type: 'button', style: 'justify-self:start', onclick: () => terminBuchen() }, L.symbol('uhr'), 'Feedbacktermin buchen'));
 }
 
 async function abschliessen() {
@@ -277,13 +285,15 @@ async function fertigMelden(r) {
 
 // --- Feedbacktermine ---
 
-async function terminBuchen() {
+// n: Gelingensnachweis (Fachgespräch / praktische Prüfung) mit aktuellem Versuch; ohne n: Feedbacktermin
+async function terminBuchen(n) {
+  const art = n ? n.art : 'feedback';
   let plaetze;
-  try { plaetze = (await api('/plaetze?art=feedback')).plaetze; }
+  try { plaetze = (await api('/plaetze?art=' + art)).plaetze; }
   catch (e) { L.meldung(e.message, true); return; }
   if (!plaetze.length) {
-    await L.dialog({ titel: 'Feedbacktermin', knopf: 'OK', abbrechen: null,
-      inhalt: el('p', { text: 'Gerade gibt es keine freien Sprechzeiten. Schau später noch einmal oder sprich deine Lehrkraft an.' }) });
+    await L.dialog({ titel: n ? n.art_text + ' buchen' : 'Feedbacktermin', knopf: 'OK', abbrechen: null,
+      inhalt: el('p', { text: 'Gerade gibt es keine freien ' + (n ? 'Prüfungszeiten' : 'Sprechzeiten') + '. Schau später noch einmal oder sprich deine Lehrkraft an.' }) });
     return;
   }
   const anlass = el('select', { required: true }, el('option', { value: '', text: 'Worum geht es?' }),
@@ -294,6 +304,7 @@ async function terminBuchen() {
   const text = el('input', { maxlength: 200, placeholder: 'kurz, worum es geht' });
   const textFeld = L.feld('Anlass', text);
   textFeld.hidden = true;
+  const anlassFeld = n ? null : L.feld('Anlass', anlass);
   anlass.addEventListener('change', () => { textFeld.hidden = anlass.value !== 't'; });
   let wahl = null;
   const ok = el('span');
@@ -305,13 +316,16 @@ async function terminBuchen() {
       ok.textContent = L.tag(t.datum) + ' · ' + b;
     } }))))));
   const erfolg = await L.dialog({
-    titel: 'Feedbacktermin buchen', knopf: 'Buchen',
-    inhalt: el('div', { class: 'stapel', style: 'gap:12px' }, L.feld('Anlass', anlass), textFeld,
-      el('p', { class: 'leise klein', text: 'Nur freie Zeiten in der Sprechzeit. Ein offener Termin zur Zeit, absagen kannst du bis zum Vortag.' }),
+    titel: n ? n.art_text + (n.titel ? ' ' + n.titel : '') + ' buchen' : 'Feedbacktermin buchen', knopf: 'Buchen',
+    inhalt: el('div', { class: 'stapel', style: 'gap:12px' }, anlassFeld, n ? null : textFeld,
+      el('p', { class: 'leise klein', text: n ? 'Nur in der Prüfungszeit, nur freie Zeiten. Absagen kannst du bis zum Vortag.'
+        : 'Nur freie Zeiten in der Sprechzeit. Ein offener Termin zur Zeit, absagen kannst du bis zum Vortag.' }),
       tage, el('div', { class: 'zeile' }, el('span', { class: 'leise klein', text: 'gewählt: ' }), ok)),
     speichern: () => {
       if (!wahl) throw new Error('Bitte eine Uhrzeit wählen.');
+      if (n) return schritt('/termin', Object.assign({ art, anlass: { versuch_id: n.aktuell.id } }, wahl));
       const v = anlass.value;
+      if (!v) throw new Error('Bitte den Anlass wählen.');
       const a = v.startsWith('a') ? { aufgabe_id: Number(v.slice(1)) } : v.startsWith('p') ? { paket_id: Number(v.slice(1)) } : { text: text.value };
       return schritt('/termin', Object.assign({ art: 'feedback', anlass: a }, wahl));
     },
@@ -323,6 +337,99 @@ async function absagen(t) {
   await L.dialog({ titel: 'Termin absagen?', knopf: 'Absagen', gefaehrlich: true,
     inhalt: el('p', { text: L.tag(t.datum) + ' · ' + t.beginn + ' · ' + t.anlass + '. Der Platz wird für andere frei.' }),
     speichern: () => schritt('/termin/absagen', { termin_id: t.id }) });
+}
+
+// --- Gelingensnachweise ---
+
+function ergebnisText(n, v) {
+  const wert = v.punkte !== null && v.punkte !== undefined ? String(v.punkte).replace('.', ',') + (n.max_punkte ? ' von ' + n.max_punkte + ' Punkten' : ' Punkte')
+    : v.note ? 'Note ' + v.note : '';
+  return (v.status === 'gelungen' ? 'gelungen' : 'noch nicht gelungen') + (wert ? ' · ' + wert : '');
+}
+
+function gnZeigen() {
+  const liste = alleNachweise();
+  L.setzen(inhalt,
+    el('h1', { class: 'dreieck', text: 'Gelingensnachweise' }),
+    liste.length ? null : el('div', { class: 'leer', text: 'Für deine Pakete gibt es noch keinen Gelingensnachweis.' }),
+    liste.map(n => {
+      const v = n.aktuell;
+      const p = z.pakete.find(x => x.id === n.paket_id);
+      let stand;
+      if (n.gelungen) {
+        const g = n.versuche.find(x => x.status === 'gelungen');
+        stand = el('div', { class: 'banner gruen', text: 'Gelungen am ' + L.tag(g.ergebnis_zeit) + (ergebnisText(n, g).includes('·') ? ' · ' + ergebnisText(n, g).split(' · ')[1] : '') });
+      } else if (v && v.termin) {
+        stand = el('div', { class: 'termin-zeile' }, el('div', {}, el('b', { text: L.tag(v.termin.datum) + ' · ' + v.termin.beginn }), ' · ' + n.art_text,
+          el('div', { class: 'leise klein', text: 'bei ' + v.termin.lehrkraft + (v.termin.datum > z.heute ? ' · absagen bis ' + L.tag(prevTag(v.termin.datum)) : '') })),
+        v.termin.datum > z.heute ? el('button', { type: 'button', class: 'klein', text: 'absagen',
+          onclick: () => absagen({ id: v.termin.id, datum: v.termin.datum, beginn: v.termin.beginn, anlass: n.art_text }) }) : null);
+      } else if (v && v.status === 'frei') {
+        stand = el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'banner', text: 'Der Test ist in Moodle freigeschaltet. Viel Erfolg!' }),
+          n.moodle_link ? el('a', { class: 'knopf haupt', style: 'justify-self:start', href: n.moodle_link, target: '_blank', rel: 'noopener' }, L.symbol('extern'), 'Test in Moodle öffnen') : null);
+      } else if (v) {
+        stand = n.art === 'moodle'
+          ? el('div', { class: 'banner', text: 'Du bist bereit gemeldet (' + L.wann(v.bereit) + '). Deine Lehrkraft schaltet den Test in Moodle frei.' })
+          : el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'banner', text: 'Du bist bereit gemeldet. Buche jetzt einen Termin in der Prüfungszeit.' }),
+            el('button', { type: 'button', class: 'haupt', style: 'justify-self:start', onclick: () => terminBuchen(n) }, L.symbol('uhr'), n.art_text + ' buchen'));
+      } else {
+        stand = el('div', { class: 'stapel', style: 'gap:6px' },
+          n.kann_gesamt ? el('div', { class: 'leise klein', text: 'Kann-Liste: ' + n.kann_nachher + ' von ' + n.kann_gesamt + ' „nachher“ eingeschätzt. Beim Bereitmelden schätzt du alle ein.' }) : null,
+          el('button', { type: 'button', class: 'haupt', style: 'justify-self:start', onclick: () => bereitMelden(n, p) }, L.symbol('haken'),
+            n.versuche.length ? 'Wieder bereit melden' : 'Ich bin bereit'));
+      }
+      return el('div', { class: 'karte stapel gn-karte' },
+        el('div', { class: 'zeile' }, el('b', { class: 'ik gn klein-ik' }, L.symbol('gn')),
+          el('div', {}, el('b', { text: n.art_text + (n.titel ? ' · ' + n.titel : '') }), el('div', { class: 'leise klein', text: n.paket })),
+          el('span', { class: 'rechts' }, n.wirksam && !n.gelungen ? el('span', { class: 'chip' + (n.ueber_frist ? ' rot' : ''),
+            text: 'bis ' + L.tag(n.wirksam) + (n.eigene_frist ? ' (neue Frist)' : '') }) : null)),
+        stand,
+        v && !v.termin && !n.gelungen ? el('button', { type: 'button', class: 'leicht klein', style: 'justify-self:start', onclick: () => bereitZurueck(n) }, 'Bereitmeldung zurückziehen') : null,
+        n.versuche.filter(x => x.status === 'gelungen' || x.status === 'nicht').length ? el('div', { class: 'stapel', style: 'gap:6px' },
+          el('div', { class: 'etikett', text: 'Deine Versuche' }),
+          n.versuche.filter(x => x.status === 'gelungen' || x.status === 'nicht').map(x => el('div', { class: 'versuch ' + x.status },
+            el('div', { class: 'zeile' }, el('b', { text: x.nr + '. Versuch' }), el('span', { class: 'sc ' + (x.status === 'gelungen' ? 'angenommen' : 'ueberarbeiten'), text: ergebnisText(n, x) }),
+              el('span', { class: 'leise klein', text: L.tag(x.ergebnis_zeit) + (x.ergebnis_von ? ' · ' + x.ergebnis_von : '') })),
+            x.text ? el('p', { class: 'rm-text klein', text: x.text }) : null,
+            x.status === 'nicht' && x.neue_frist ? el('div', { class: 'leise klein', text: 'Neue Frist: ' + L.tag(x.neue_frist) + '. Schau dir deine Empfehlungen unter „Rückmeldungen“ an.' }) : null))) : null);
+    }));
+}
+
+function prevTag(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+async function bereitMelden(n, p) {
+  const kann = p ? p.kann : [];
+  const werte = {};
+  kann.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
+  const ok = await L.dialog({
+    titel: 'Bereit für ' + n.art_text + (n.titel ? ' ' + n.titel : '') + '?', knopf: 'Ich bin bereit',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('p', { class: 'leise klein', text: n.art === 'moodle' ? 'Deine Lehrkraft schaltet danach den Test in Moodle frei.'
+        : 'Danach buchst du einen Termin in der Prüfungszeit.' }),
+      kann.length ? el('div', { class: 'stapel', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Wie sicher bist du jetzt? (alle Aussagen)' }),
+        zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
+        kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+          k.vorher ? el('div', { class: 'leise klein', text: 'Vorher: ' + L.stufeText(k.vorher, zahlen()) }) : null,
+          L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))) : null),
+    speichern: () => {
+      if (kann.some(k => !werte[k.id])) throw new Error('Bitte schätze jede Kann-Aussage ein.');
+      return schritt('/bereit', { nachweis_id: n.id, kann: werte });
+    },
+  });
+  if (!ok) return;
+  L.meldung('Du bist bereit gemeldet.');
+  const neu = alleNachweise().find(x => x.id === n.id);
+  if (neu && neu.art !== 'moodle' && neu.aktuell && !neu.aktuell.termin) terminBuchen(neu);
+}
+
+async function bereitZurueck(n) {
+  await L.dialog({ titel: 'Bereitmeldung zurückziehen?', knopf: 'Zurückziehen',
+    inhalt: el('p', { text: 'Du kannst dich jederzeit wieder bereit melden.' }),
+    speichern: () => schritt('/bereit/zurueck', { versuch_id: n.aktuell.id }) });
 }
 
 // --- Rückmeldungen ---
@@ -347,10 +454,11 @@ async function rueckZeigen() {
     d.empfehlungen.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Empfohlen für dich' }), d.empfehlungen.map(empZeile)) : null,
     d.rueckmeldungen.map(r => el('div', { class: 'karte stapel rm' + (r.gelesen ? '' : ' neu') },
       el('div', { class: 'zeile' }, el('b', { class: 'ik rueck klein-ik' }, L.symbol('rueck')),
-        el('div', {}, el('b', { text: r.aufgabe ? r.aufgabe.kuerzel + ' ' + r.aufgabe.titel : r.paket ? 'Paket ' + r.paket : 'Feedback' }),
+        el('div', {}, el('b', { text: r.nachweis ? r.nachweis.titel : r.aufgabe ? r.aufgabe.kuerzel + ' ' + r.aufgabe.titel : r.paket ? 'Paket ' + r.paket : 'Feedback' }),
           el('div', { class: 'leise klein', text: r.verfasser + ' · ' + L.wann(r.freigegeben) })),
         el('span', { class: 'rechts' }, r.gelesen ? null : el('span', { class: 'chip rot', text: 'neu' }),
-          r.entscheidung === 'angenommen' ? el('span', { class: 'sc angenommen', text: 'angenommen' })
+          r.ergebnis ? el('span', { class: 'sc ' + (r.ergebnis === 'gelungen' ? 'angenommen' : 'ueberarbeiten'), text: r.ergebnis === 'gelungen' ? 'gelungen' : 'noch nicht gelungen' })
+            : r.entscheidung === 'angenommen' ? el('span', { class: 'sc angenommen', text: 'angenommen' })
             : r.entscheidung === 'ueberarbeiten' ? el('span', { class: 'sc ueberarbeiten', text: 'überarbeiten bis ' + L.tag(r.neue_frist) }) : null)),
       r.text ? el('p', { class: 'rm-text', text: r.text }) : null,
       r.kann.length ? el('div', { class: 'stapel', style: 'gap:4px' }, el('div', { class: 'etikett', text: 'Einschätzung deiner Lehrkraft' }),

@@ -369,3 +369,18 @@ td.abweichung { color: var(--rot); font-weight: 700; }
 .slot .rechts { display: flex; gap: 4px; }
 button.diktat.laeuft { background: var(--rot); border-color: var(--rot); color: #fff; }
 .diktat-hinweis { max-width: 520px; }
+/* Stufe E: Gelingensnachweise */
+.banner.gruen { background: #f2f7d9; border-color: #d4e08a; }
+.rot-text { color: var(--rot); font-weight: 700; }
+.lp tr.nw td.auf button.kz { color: var(--lila); border-color: #c9b2de; background: #f7f2fb; }
+.gn-karte { border-left: 4px solid var(--lila); }
+.versuch { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--linie); border-radius: 10px 4px 4px 4px; }
+.versuch.gelungen { border-color: #d4e08a; background: #fafcef; }
+.mz.gn-offen { color: var(--leise); border: 1px dashed var(--linie-stark); }
+.mz.gn-bereit, .mz.gn-frei, .mz.gn-termin { background: var(--lila); color: #fff; }
+.mz.gn-gelungen { background: var(--gruen); color: #1d2433; }
+.mz.gn-nicht { border: 1.5px solid var(--rot); color: var(--rot); background: var(--rot-hell); }
+.ergebnis { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+.ergebnis input[type=date], .ergebnis input[type=number] { width: auto; }
+.ergebnis input.punkte { width: 90px; } .ergebnis input.note { width: 70px; }
+.mx th .kz.gn { color: var(--lila); }

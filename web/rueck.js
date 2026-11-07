@@ -1,7 +1,8 @@
 // Rückmeldung und Empfehlungen (Stufe D, Skizze F): aus „Zu prüfen“, aus einem Termin, aus der Matrix oder von der
 // Schülerseite geöffnet. Kann-Aussagen mit der Einschätzung des Schülers und Ihrer daneben, Entscheidung (angenommen /
 // überarbeiten bis), Text (getippt oder diktiert), Empfehlungen freiwillig oder verbindlich mit Frist.
-// Bis „Freigeben“ ist alles ein Entwurf, den nur Sie sehen.
+// Bis „Freigeben“ ist alles ein Entwurf, den nur Sie sehen. Stufe E: zu einem Gelingensnachweis (Versuch) statt der
+// Entscheidung das Ergebnis: gelungen / noch nicht gelungen, wahlweise Punkte oder Note, bei „noch nicht“ eine neue Frist.
 'use strict';
 const Rueck = (() => {
   const el = L.el;
@@ -9,11 +10,11 @@ const Rueck = (() => {
 
   async function vorlage(o) {
     const q = new URLSearchParams({ schueler: o.schueler });
-    ['meldung', 'termin', 'rueckmeldung', 'aufgabe'].forEach(n => { if (o[n]) q.set(n, o[n]); });
+    ['meldung', 'termin', 'rueckmeldung', 'aufgabe', 'versuch'].forEach(n => { if (o[n]) q.set(n, o[n]); });
     return L.api('GET', '/api/rueckmeldung/vorlage?' + q.toString());
   }
 
-  // o: { schueler, meldung?, termin?, rueckmeldung?, aufgabe? } -> Promise (true, wenn gespeichert)
+  // o: { schueler, meldung?, termin?, rueckmeldung?, aufgabe?, versuch? } -> Promise (true, wenn gespeichert)
   async function oeffnen(o) {
     let v;
     try { v = await vorlage(o); } catch (e) { L.meldung(e.message, true); return null; }
@@ -70,11 +71,13 @@ const Rueck = (() => {
     const kopf = el('div', { class: 'leise klein' }, name + ' · ' + v.schueler.klasse,
       v.meldung ? ' · fertig gemeldet ' + L.wann(v.meldung.zeit) + (offen ? '' : ' (' + ({ angenommen: 'angenommen', ueberarbeiten: 'überarbeiten', zurueckgezogen: 'zurückgezogen' }[v.meldung.status] || '') + ')') : '',
       v.termin ? ' · Termin ' + L.tag(v.termin.datum) + ' ' + v.termin.beginn : '',
+      v.nachweis ? ' · ' + v.nachweis.versuch.nr + '. Versuch, bereit gemeldet ' + L.wann(v.nachweis.versuch.bereit)
+        + (v.nachweis.versuch.frei ? ', in Moodle frei seit ' + L.wann(v.nachweis.versuch.frei) : '') : '',
       e && e.freigegeben ? ' · freigegeben ' + L.wann(e.freigegeben) + ' von ' + e.verfasser : e ? ' · Entwurf vom ' + L.wann(e.geaendert) : '');
 
     // Anlass waehlen, wenn die Rueckmeldung frei (ohne Meldung, Termin, Aufgabe) geoeffnet wurde
     let anlass = null;
-    if (!e && !v.meldung && !v.termin && !lesen) {
+    if (!e && !v.meldung && !v.termin && !v.nachweis && !lesen) {
       anlass = aufgabenWahl(v.auswahl, v.aufgabe ? v.aufgabe.id : '');
       anlass.required = false;
       anlass.options[0].textContent = 'allgemein (keine bestimmte Aufgabe)';
@@ -109,6 +112,33 @@ const Rueck = (() => {
       entscheidungsBlock = el('div', {}, el('span', { class: 'sc ' + e.entscheidung, text: e.entscheidung === 'angenommen' ? 'angenommen' : 'überarbeiten bis ' + L.tag(e.neue_frist) }));
     }
 
+    // Ergebnis eines Gelingensnachweises
+    let ergebnis = null, ergFrist = null, punkte = null, note = null, ergebnisBlock = null;
+    const nw = v.nachweis;
+    const vOffen = nw && ['bereit', 'frei'].includes(nw.versuch.status);
+    if (nw && vOffen && !lesen) {
+      const n = 'g' + Math.random().toString(36).slice(2);
+      const ja = el('input', { type: 'radio', name: n, value: 'gelungen', checked: e && e.ergebnis === 'gelungen' });
+      const nein = el('input', { type: 'radio', name: n, value: 'nicht', checked: e && e.ergebnis === 'nicht' });
+      ergFrist = el('input', { type: 'date', value: e && e.neue_frist ? e.neue_frist : v.frist_vorschlag });
+      const fristOrt = el('label', { class: 'haken' }, 'neue Frist', ergFrist);
+      if (nw.ergebnis === 'punkte') punkte = el('input', { class: 'punkte', type: 'text', inputmode: 'decimal', value: e && e.punkte !== null ? String(e.punkte).replace('.', ',') : '' });
+      if (nw.ergebnis === 'note') note = el('input', { class: 'note', type: 'text', maxlength: 5, placeholder: 'z. B. 2+', value: e && e.note ? e.note : '' });
+      const sichtbar = () => { fristOrt.hidden = !nein.checked; };
+      ja.addEventListener('change', sichtbar); nein.addEventListener('change', sichtbar); sichtbar();
+      ergebnis = () => ja.checked ? 'gelungen' : nein.checked ? 'nicht' : null;
+      ergebnisBlock = el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Ergebnis' }),
+        el('div', { class: 'ergebnis' }, el('label', { class: 'haken' }, ja, 'gelungen'), el('label', { class: 'haken' }, nein, 'noch nicht gelungen'),
+          punkte ? el('label', { class: 'haken' }, 'Punkte', punkte, 'von ' + nw.max_punkte) : null, note ? el('label', { class: 'haken' }, 'Note', note) : null, fristOrt),
+        el('p', { class: 'leise klein', text: 'Bei „noch nicht gelungen“ gilt die neue Frist (Vorgabe: übernächster Unterrichtstag). Empfehlungen unten sind die Nacharbeit, eine Sperre gibt es nicht.' }));
+    } else if (e && e.ergebnis) {
+      const wert = e.punkte !== null && e.punkte !== undefined ? ' · ' + String(e.punkte).replace('.', ',') + ' Punkte' : e.note ? ' · Note ' + e.note : '';
+      ergebnisBlock = el('div', {}, el('span', { class: 'sc ' + (e.ergebnis === 'gelungen' ? 'angenommen' : 'ueberarbeiten'),
+        text: (e.ergebnis === 'gelungen' ? 'gelungen' : 'noch nicht gelungen, neue Frist ' + L.tag(e.neue_frist)) + wert }));
+    } else if (nw && !vOffen) {
+      ergebnisBlock = el('div', { class: 'banner klein', text: 'Dieser Versuch ist schon abgeschlossen oder zurückgezogen.' });
+    }
+
     // Text
     const text = el('textarea', { rows: 6, maxlength: 6000, readonly: lesen || null, placeholder: 'Rückmeldung für ' + v.schueler.vorname + ' …' });
     text.value = e ? e.text : '';
@@ -133,7 +163,10 @@ const Rueck = (() => {
     const daten = freigeben => ({
       schueler_id: v.schueler.id, id: e && !e.freigegeben ? e.id : undefined, meldung_id: v.meldung ? v.meldung.id : undefined,
       termin_id: v.termin ? v.termin.id : undefined, aufgabe_id: v.aufgabe ? v.aufgabe.id : undefined, paket_id: v.paket_id || undefined,
-      text: text.value, entscheidung: entscheidung ? entscheidung() : undefined, neue_frist: neueFrist ? neueFrist.value : undefined,
+      text: text.value, entscheidung: entscheidung ? entscheidung() : undefined,
+      neue_frist: neueFrist ? neueFrist.value : ergFrist && ergebnis && ergebnis() === 'nicht' ? ergFrist.value : undefined,
+      versuch_id: nw ? nw.versuch.id : undefined, ergebnis: ergebnis ? ergebnis() || undefined : undefined,
+      punkte: punkte ? punkte.value : undefined, note: note ? note.value : undefined,
       kann: kannWerte, empfehlungen: Array.from(liste.children).filter(z => z.lesen).map(z => z.lesen()), freigeben,
     });
     const speichern = freigeben => async () => {
@@ -143,7 +176,8 @@ const Rueck = (() => {
       L.meldung(freigeben ? 'Freigegeben. ' + v.schueler.vorname + ' sieht die Rückmeldung jetzt.' : 'Entwurf gespeichert. Nur Sie sehen ihn.');
       return r;
     };
-    const titel = 'Rückmeldung · ' + (v.aufgabe ? v.aufgabe.kuerzel + ' ' + v.aufgabe.titel : v.termin && v.termin.anlass_text ? v.termin.anlass_text : 'Feedback');
+    const titel = nw ? 'Gelingensnachweis · ' + nw.titel
+      : 'Rückmeldung · ' + (v.aufgabe ? v.aufgabe.kuerzel + ' ' + v.aufgabe.titel : v.termin && v.termin.anlass_text ? v.termin.anlass_text : 'Feedback');
     return L.dialog({
       titel, breit: true, abbrechen: 'Schließen',
       knopf: lesen ? null : 'Freigeben',
@@ -153,7 +187,9 @@ const Rueck = (() => {
         anlass ? L.feld('Anlass', anlass) : null,
         v.aufgabe && v.aufgabe.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: v.aufgabe.moodle_link, target: '_blank', rel: 'noopener' },
           L.symbol('extern'), 'Abgabe in Moodle ansehen') : null,
-        kannTab, entscheidungsBlock,
+        nw && nw.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: nw.moodle_link, target: '_blank', rel: 'noopener' },
+          L.symbol('extern'), 'Test in Moodle ansehen') : null,
+        kannTab, entscheidungsBlock, ergebnisBlock,
         el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Text für ' + v.schueler.vorname + (lesen ? '' : ' (bearbeitbar)') }), text, textWerkzeug),
         empBlock,
         e && !e.freigegeben && !lesen ? L.nebenknopf('Entwurf verwerfen …', () => verwerfen(e, o)) : null),
