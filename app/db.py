@@ -372,6 +372,27 @@ MIGRATIONEN = [
     ALTER TABLE termin ADD COLUMN meldung_id INTEGER REFERENCES meldung(id) ON DELETE SET NULL;
     ALTER TABLE termin ADD COLUMN hinweis TEXT NOT NULL DEFAULT ''
     """,
+    # 7: Zweierteams. Die Lehrkraft erlaubt "zu zweit" je Aufgabe oder fuers ganze Paket; ein Team gilt fuer eine Aufgabe
+    # (bereich 'aufgabe') oder alle Aufgaben eines Pakets (bereich 'paket'). Gemeinsam: Plan, Fertigmeldung (gruppe),
+    # Rueckmeldung und Entscheidung; je Person: Kann-Einschaetzung, Farbmarkierung, Empfehlungen, Gelingensnachweis.
+    """
+    ALTER TABLE aufgabe ADD COLUMN team INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE paket ADD COLUMN team INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE meldung ADD COLUMN gruppe INTEGER;
+    CREATE TABLE team (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        bereich TEXT NOT NULL CHECK (bereich IN ('aufgabe', 'paket')),
+        bezug_id INTEGER NOT NULL,
+        a_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        b_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('eingeladen', 'aktiv', 'aufgeloest')),
+        erstellt TEXT NOT NULL,
+        bestaetigt TEXT,
+        ende TEXT,
+        ende_von TEXT);
+    CREATE INDEX team_bezug ON team (bereich, bezug_id)
+    """,
 ]
 
 

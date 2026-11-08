@@ -278,9 +278,17 @@ def _versuche_loesen(con, termin_ids):
 
 
 def _gebucht(con, zid, datum):
-    return {z["beginn"]: z for z in con.execute(
-        "SELECT t.*, s.vorname, s.nachname FROM termin t JOIN schueler s ON s.id = t.schueler_id "
-        "WHERE t.zeitfenster_id = ? AND t.datum = ? AND t.abgesagt IS NULL", (zid, datum))}
+    """{beginn: Termin}; ein Teamgespraech (zwei Schueler, ein Platz) zeigt beide Namen."""
+    aus = {}
+    for z in con.execute("SELECT t.*, s.vorname, s.nachname FROM termin t JOIN schueler s ON s.id = t.schueler_id "
+                         "WHERE t.zeitfenster_id = ? AND t.datum = ? AND t.abgesagt IS NULL ORDER BY t.id", (zid, datum)):
+        if z["beginn"] in aus:
+            erster = dict(aus[z["beginn"]])
+            erster["nachname"] = erster["nachname"] + " + " + z["vorname"] + " " + z["nachname"]
+            aus[z["beginn"]] = erster
+        else:
+            aus[z["beginn"]] = z
+    return aus
 
 
 def _anlass_text(con, t):
@@ -524,4 +532,14 @@ def gespraech_eintragen(con, konto, meldung_id, zeitfenster_id, datum, beginn, h
                       (z["id"], m["schueler_id"], d.isoformat(), platz[0], platz[1], db.jetzt(), meldung_id, hinweis, m["aufgabe_id"])).lastrowid
     db.ereignis(con, m["klasse_id"], m["schueler_id"], "lehrkraft", konto["kuerzel"], "gespraech", datum=d.isoformat(), beginn=platz[0],
                 kuerzel=m["kuerzel"], meldung_id=meldung_id)
+    if m["gruppe"]:   # Teammeldung: dasselbe Gespraech fuer den Partner
+        for pm in con.execute("SELECT * FROM meldung WHERE gruppe = ? AND id != ? AND status = 'offen'", (m["gruppe"], meldung_id)).fetchall():
+            if gespraech(con, pm["id"]):
+                continue
+            con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
+                        "anlass_text, gebucht, pflicht, meldung_id, hinweis) "
+                        "SELECT ?, ?, ?, ?, ?, 'feedback', a.id, a.paket_id, '', ?, 1, ?, ? FROM aufgabe a WHERE a.id = ?",
+                        (z["id"], pm["schueler_id"], d.isoformat(), platz[0], platz[1], db.jetzt(), pm["id"], hinweis, pm["aufgabe_id"]))
+            db.ereignis(con, m["klasse_id"], pm["schueler_id"], "lehrkraft", konto["kuerzel"], "gespraech", datum=d.isoformat(), beginn=platz[0],
+                        kuerzel=m["kuerzel"], meldung_id=pm["id"])
     return tid

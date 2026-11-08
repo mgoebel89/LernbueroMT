@@ -23,8 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import (VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr, rueckmeldung, termine,
-               unterrichtstage, updates)
+from . import (VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr, rueckmeldung, teams,
+               termine, unterrichtstage, updates)
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -212,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
                 unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
                 rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler,
-                nachweise.NachweisFehler) as f:
+                nachweise.NachweisFehler, teams.TeamFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -721,6 +721,8 @@ SCHUELER_SCHRITTE = {
     "termin": lambda con, s, d: termine.buchen(con, s, _ganzzahl_feld(d, "zeitfenster_id"), d.get("datum"), str(d.get("beginn") or ""),
                                                d.get("art") or "feedback", d.get("anlass")),
     "termin_absagen": lambda con, s, d: termine.absagen_schueler(con, s, _ganzzahl_feld(d, "termin_id")),
+    "team": lambda con, s, d: teams.einladen(con, s, d.get("bereich"), _ganzzahl_feld(d, "bezug_id"), _ganzzahl_feld(d, "partner_id")),
+    "team_antwort": lambda con, s, d: teams.antworten(con, s, _ganzzahl_feld(d, "team_id"), bool(d.get("annehmen"))),
     "markieren": lambda con, s, d: lernplan.markieren(con, s, _ganzzahl_feld(d, "aufgabe_id"), d.get("datum"), d.get("ampel") or None),
     "bereit": lambda con, s, d: nachweise.bereit_melden(con, s, _ganzzahl_feld(d, "nachweis_id"), rueckmeldung.json_kann(d.get("kann"))),
     "bereit_zurueck": lambda con, s, d: nachweise.zurueckziehen(con, s, _ganzzahl_feld(d, "versuch_id")),
@@ -755,7 +757,10 @@ def api_rueckmeldung_vorlage(h, con, daten):
 def api_rueckmeldung_speichern(h, con, daten):
     k = h.konto(con)
     with db.transaktion(con):
-        rid = rueckmeldung.speichern(con, k, daten, freigeben=bool(daten.get("freigeben")))
+        if daten.get("personen"):
+            rid = rueckmeldung.speichern_team(con, k, daten, freigeben=bool(daten.get("freigeben")))
+        else:
+            rid = rueckmeldung.speichern(con, k, daten, freigeben=bool(daten.get("freigeben")))
     h.antwort(200, {"id": rid, "freigegeben": bool(daten.get("freigeben"))})
 
 
@@ -839,6 +844,31 @@ def api_gespraech_eintragen(h, con, daten, mid):
     h.antwort(200, {"gespraech": termine.gespraech(con, _ganzzahl(mid))})
 
 
+def api_mitschueler(h, con, daten, code):
+    h.antwort(200, {"mitschueler": teams.mitschueler(con, _schueler(h, con, code))})
+
+
+def api_teams(h, con, daten, kid):
+    k = h.konto(con)
+    paket = h.abfrage("paket")
+    h.antwort(200, teams.liste_klasse(con, k, _ganzzahl(kid), _ganzzahl(paket) if paket else None))
+
+
+def api_team_bilden(h, con, daten, kid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        teams.bilden(con, k, _ganzzahl(kid), daten.get("bereich"), _ganzzahl(daten.get("bezug_id")), _ganzzahl(daten.get("a_id")),
+                     _ganzzahl(daten.get("b_id")))
+    h.antwort(200, {"ok": True})
+
+
+def api_team_aufloesen(h, con, daten, tid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        teams.aufloesen(con, k, _ganzzahl(tid))
+    h.antwort(200, {"ok": True})
+
+
 def api_diktat_stand(h, con, daten):
     h.konto(con)
     h.antwort(200, diktat.stand(DATEN_DIR))
@@ -904,6 +934,12 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin", _schueler_schritt(SCHUELER_SCHRITTE["termin"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/termin/absagen", _schueler_schritt(SCHUELER_SCHRITTE["termin_absagen"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/markieren", _schueler_schritt(SCHUELER_SCHRITTE["markieren"])),
+    ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/mitschueler", api_mitschueler),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/team", _schueler_schritt(SCHUELER_SCHRITTE["team"])),
+    ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/team/antwort", _schueler_schritt(SCHUELER_SCHRITTE["team_antwort"])),
+    ("GET", r"/api/klassen/(\d+)/teams", api_teams),
+    ("POST", r"/api/klassen/(\d+)/teams", api_team_bilden),
+    ("POST", r"/api/teams/(\d+)/aufloesen", api_team_aufloesen),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit", _schueler_schritt(SCHUELER_SCHRITTE["bereit"])),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/bereit/zurueck", _schueler_schritt(SCHUELER_SCHRITTE["bereit_zurueck"])),
     ("POST", r"/api/versuche/(\d+)/frei", api_versuch_frei),

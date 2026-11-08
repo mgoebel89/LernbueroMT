@@ -80,7 +80,7 @@ const Pakete = (() => {
       el('td', { class: 'mono', text: a.kuerzel }),
       el('td', {}, a.titel, ' ', link(a), a.kann.length ? el('span', { class: 'leise klein', text: ' · ' + p.kann.filter(k => a.kann.includes(k.id)).map(k => k.kuerzel).join(', ') }) : null),
       el('td', {}, a.art === 'pflicht' ? el('span', { class: 'chip', text: 'Pflicht' }) : a.art === 'wahl' ? el('span', { class: 'chip blau', text: 'Wahl' })
-        : el('span', { class: 'chip gelb', text: ZUSATZ[a.zusatz_art] })),
+        : el('span', { class: 'chip gelb', text: ZUSATZ[a.zusatz_art] }), a.team ? el('span', { class: 'chip lila klein', title: 'zu zweit möglich', text: 'zu zweit' }) : null),
       el('td', {}, a.art === 'zusatz' ? el('span', { class: 'leise klein', text: 'bei Empfehlung' }) : fristText(a)),
       el('td', { class: 'leise klein', text: a.voraussetzung ? 'nach ' + a.voraussetzung : '' }),
       el('td', { class: 'knoepfe' }, pfeile('/aufgaben/' + a.id), darf ? el('button', { type: 'button', class: 'klein', onclick: () => aufgabeDialog(p, a) }, 'Bearbeiten') : null));
@@ -108,6 +108,7 @@ const Pakete = (() => {
         p.lernfeld ? el('span', { class: 'chip', text: p.lernfeld }) : null,
         p.vorlage ? el('span', { class: 'chip', text: 'Vorlage' }) : el('a', { class: 'chip blau', href: '#pakete/' + p.klasse_id, text: p.klasse }),
         p.archiviert ? el('span', { class: 'chip', text: 'archiviert' }) : null,
+        p.team ? el('span', { class: 'chip lila', text: 'ganzes Paket zu zweit' }) : null,
         darf ? el('button', { type: 'button', onclick: () => paketDialog(p) }, 'Bearbeiten') : null,
         darf && !p.vorlage ? el('button', { type: 'button', class: p.freigabe ? null : 'haupt', onclick: () => freigabeDialog(p) }, p.freigabe ? 'Freigabe ändern' : 'Freigeben …') : null,
         el('button', { type: 'button', onclick: () => kopierDialog(p) }, L.symbol('kopie'), 'Kopieren')),
@@ -170,6 +171,7 @@ const Pakete = (() => {
     vor.value = a && a.voraussetzung_id ? a.voraussetzung_id : '';
     const zusatz = el('select', {}, Object.entries(ZUSATZ).map(([w, t]) => el('option', { value: w, text: t })));
     zusatz.value = a && a.zusatz_art ? a.zusatz_art : 'vertiefung';
+    const team = el('input', { type: 'checkbox', checked: !!(a && a.team_eigen) });
     const was = art === 'pflicht' ? 'Pflichtaufgabe' : art === 'wahl' ? 'Aufgabe in Wahlgruppe ' + (gruppe ? gruppe.buchstabe : '') : 'Zusatzaufgabe';
     fertig(await L.dialog({
       titel: a ? a.kuerzel + ' bearbeiten' : 'Neue ' + was, knopf: a ? 'Speichern' : 'Anlegen',
@@ -179,12 +181,14 @@ const Pakete = (() => {
         art === 'zusatz' ? L.feld('Art der Zusatzaufgabe', zusatz, 'Frist setzen Sie, wenn Sie sie einem Schüler verbindlich empfehlen')
           : el('div', { class: 'felder zwei' }, L.feld('Frist', frist, art === 'wahl' ? 'leer = Frist der Wahlgruppe' : 'leer = Paket-Frist'),
             L.feld('Voraussetzung', vor, 'vorgemerkt, die Reihenfolge bleibt vorerst frei')),
+        art === 'zusatz' ? null : p.team ? el('p', { class: 'leise klein', text: 'Das ganze Paket ist zu zweit möglich (Paket bearbeiten).' })
+          : el('label', { class: 'haken' }, team, 'zu zweit möglich (Schüler bilden ein Zweierteam: gemeinsamer Plan, eine Fertigmeldung, eine Rückmeldung)'),
         a ? el('div', {}, entfernen(a.kuerzel + ' entfernen?', '„' + a.titel + '“ verschwindet aus dem Paket. Schon Geplantes der Schüler bleibt im Verlauf.', '/aufgaben/' + a.id, p.id)) : null),
       speichern: () => {
         const d = { titel: titel.value, moodle_link: link.value };
         if (kuerzel.value) d.kuerzel = kuerzel.value;
         if (art === 'zusatz') d.zusatz_art = zusatz.value;
-        else { d.frist = frist.value || null; d.voraussetzung_id = vor.value ? Number(vor.value) : null; }
+        else { d.frist = frist.value || null; d.voraussetzung_id = vor.value ? Number(vor.value) : null; d.team = team.checked; }
         if (!a) { d.art = art; if (gruppe) d.wahlgruppe_id = gruppe.id; }
         return api(p.id, a ? '/aufgaben/' + a.id : '/aufgaben', d);
       },
@@ -248,11 +252,13 @@ const Pakete = (() => {
     const lf = el('input', { maxlength: 20, value: p.lernfeld });
     const frist = datumFeld(p.frist.frist);
     const archiv = el('input', { type: 'checkbox', checked: p.archiviert });
+    const team = el('input', { type: 'checkbox', checked: p.team });
     fertig(await L.dialog({
       titel: 'Paket bearbeiten',
       inhalt: el('div', { class: 'felder' }, L.feld('Titel', titel), el('div', { class: 'felder zwei' }, L.feld('Lernfeld', lf), L.feld('Paket-Frist', frist, 'gilt für alles ohne eigene Frist')),
+        el('label', { class: 'haken' }, team, 'ganzes Paket zu zweit möglich (ein Partner für alle Aufgaben außer Zusatzaufgaben; der Gelingensnachweis bleibt einzeln)'),
         el('label', { class: 'haken' }, archiv, 'archiviert (Schüler sehen es nicht mehr in der Planung)')),
-      speichern: () => api(p.id, '', { titel: titel.value, lernfeld: lf.value, frist: frist.value || null, archiviert: archiv.checked }),
+      speichern: () => api(p.id, '', { titel: titel.value, lernfeld: lf.value, frist: frist.value || null, archiviert: archiv.checked, team: team.checked }),
     }));
   }
 

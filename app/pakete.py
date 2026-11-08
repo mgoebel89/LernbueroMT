@@ -115,6 +115,8 @@ def aendern(con, konto, pid, d):
         felder["freigabe"] = _datum(d["freigabe"])
     if "archiviert" in d:
         felder["archiviert"] = 1 if d["archiviert"] else 0
+    if "team" in d:   # das ganze Paket zu zweit (ein Partner fuer alle Aufgaben ausser Zusatzaufgaben)
+        felder["team"] = 1 if d["team"] else 0
     for spalte, wert in felder.items():
         con.execute("UPDATE paket SET %s = ? WHERE id = ?" % spalte, (wert, pid))
     if felder:
@@ -229,11 +231,11 @@ def aufgabe_anlegen(con, konto, pid, d):
     if d.get("kuerzel"):
         kuerzel = _text(d["kuerzel"], "Kürzel", 1, 6)
     cur = con.execute(
-        "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, frist, moodle_link, voraussetzung_id, pos, erstellt) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, frist, moodle_link, voraussetzung_id, pos, erstellt, team) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (pid, kuerzel, _text(d.get("titel"), "Titel der Aufgabe", 2, 120), art, gid, zusatz_art,
          None if art == "zusatz" else _datum(d.get("frist")), _link(d.get("moodle_link")),
-         _voraussetzung(con, pid, d.get("voraussetzung_id")), pos, db.jetzt()))
+         _voraussetzung(con, pid, d.get("voraussetzung_id")), pos, db.jetzt(), 1 if d.get("team") and art != "zusatz" else 0))
     _log(con, p, konto, "aufgabe_angelegt", kuerzel=kuerzel, titel=d.get("titel"), aufgabenart=art)
     return cur.lastrowid
 
@@ -260,6 +262,8 @@ def aufgabe_aendern(con, konto, pid, aid, d):
         felder["moodle_link"] = _link(d["moodle_link"])
     if "voraussetzung_id" in d:
         felder["voraussetzung_id"] = _voraussetzung(con, pid, d["voraussetzung_id"], selbst=aid)
+    if "team" in d and a["art"] != "zusatz":
+        felder["team"] = 1 if d["team"] else 0
     if "zusatz_art" in d and a["art"] == "zusatz":
         if d["zusatz_art"] not in ZUSATZ_ARTEN:
             raise PaketFehler("Zusatzaufgabe: Vertiefung oder Wiederholung.")
@@ -453,6 +457,7 @@ def struktur(con, p, rolle=None):
         frist = _frist(con, kid, a["frist"], ("gruppe", g["frist"] if g else None), ("paket", p["frist"])) if a["art"] != "zusatz" \
             else {"frist": None, "wirksam": None, "hinweis": "", "quelle": None}
         return {"id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"], "art": a["art"], "wahlgruppe_id": a["wahlgruppe_id"],
+                "team": bool(a["team"]) or (bool(p["team"]) and a["art"] != "zusatz"), "team_eigen": bool(a["team"]),
                 "zusatz_art": a["zusatz_art"], "moodle_link": a["moodle_link"], "voraussetzung_id": a["voraussetzung_id"],
                 "voraussetzung": kuerzel.get(a["voraussetzung_id"]),
                 "kann": sorted(k for k, ids in kann_links.items() if a["id"] in ids), **frist, "eigene_frist": a["frist"]}
@@ -482,7 +487,7 @@ def struktur(con, p, rolle=None):
         w, h = unterrichtstage.wirksame_frist(con, kid, p["freigabe"])
         freigabe = {"datum": p["freigabe"], "wirksam": w, "hinweis": h}
     return {"id": p["id"], "titel": p["titel"], "lernfeld": p["lernfeld"], "klasse_id": kid, "klasse": klasse["name"] if klasse else None,
-            "vorlage": kid is None, "rolle": rolle, "darf_aendern": rolle == "team", "archiviert": bool(p["archiviert"]),
+            "vorlage": kid is None, "rolle": rolle, "darf_aendern": rolle == "team", "archiviert": bool(p["archiviert"]), "team": bool(p["team"]),
             "freigabe": freigabe, "frist": _frist(con, kid, p["frist"]), "ablauf": ablauf, "zusatz": zusatz, "kann": kann,
             "nachweise": nachweise}
 
@@ -494,8 +499,8 @@ def kopieren(con, konto, pid, ziel_klasse_id=None, titel=None):
     p, _ = pruefen(con, pid, konto)
     if ziel_klasse_id is not None:
         klassen.pruefen(con, ziel_klasse_id, konto, "aendern")
-    neu = con.execute("INSERT INTO paket (klasse_id, besitzer_id, titel, lernfeld, aus_paket_id, erstellt) VALUES (?, ?, ?, ?, ?, ?)",
-                      (ziel_klasse_id, konto["id"], _text(titel or p["titel"], "Titel", 2, 80), p["lernfeld"], pid, db.jetzt())).lastrowid
+    neu = con.execute("INSERT INTO paket (klasse_id, besitzer_id, titel, lernfeld, aus_paket_id, erstellt, team) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (ziel_klasse_id, konto["id"], _text(titel or p["titel"], "Titel", 2, 80), p["lernfeld"], pid, db.jetzt(), p["team"])).lastrowid
     gruppen = {}
     for g in con.execute("SELECT * FROM wahlgruppe WHERE paket_id = ? AND aktiv = 1", (pid,)).fetchall():
         gruppen[g["id"]] = con.execute("INSERT INTO wahlgruppe (paket_id, buchstabe, titel, waehlen, pos) VALUES (?, ?, ?, ?, ?)",
@@ -504,10 +509,10 @@ def kopieren(con, konto, pid, ziel_klasse_id=None, titel=None):
     alte = con.execute("SELECT * FROM aufgabe WHERE paket_id = ? AND aktiv = 1", (pid,)).fetchall()
     for a in alte:
         aufgaben[a["id"]] = con.execute(
-            "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, moodle_link, pos, erstellt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, moodle_link, pos, erstellt, team) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (neu, a["kuerzel"], a["titel"], a["art"], gruppen.get(a["wahlgruppe_id"]), a["zusatz_art"], a["moodle_link"], a["pos"],
-             db.jetzt())).lastrowid
+             db.jetzt(), a["team"])).lastrowid
     for a in alte:
         if a["voraussetzung_id"] in aufgaben:
             con.execute("UPDATE aufgabe SET voraussetzung_id = ? WHERE id = ?", (aufgaben[a["voraussetzung_id"]], aufgaben[a["id"]]))

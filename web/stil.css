@@ -397,3 +397,47 @@ button.diktat.laeuft { background: var(--rot); border-color: var(--rot); color: 
 .lp tr.erledigt td.auf, .lp tr.erledigt td.st { opacity: .55; }
 .lp tr.erledigt td.t { filter: grayscale(.8); opacity: .55; }
 .hinweis-modus { font-weight: 700; color: var(--blau); }
+/* Zweierteams */
+.team-banner { background: #f7f2fb; border-color: #e0d3ec; display: flex; gap: 6px; align-items: flex-start; }
+.team-banner .symbol { width: 16px; height: 16px; color: var(--lila); flex: none; margin-top: 1px; }
+.lp tr.paket td .team-knopf { margin-left: 10px; text-transform: none; letter-spacing: 0; min-height: 22px; padding: 1px 8px; }
+.lp tr.paket td .chip { margin-left: 8px; text-transform: none; letter-spacing: 0; }
+.team-liste .jz { grid-template-columns: 1fr auto; }
+.team-name { display: flex; gap: 4px; align-items: center; font-weight: 500; }
+.team-name .symbol { width: 12px; height: 12px; color: var(--lila); }
+/* Handy und Tablet hochkant: Seite mit 4 Unterrichtstagen zum Blaettern */
+.seiten { display: grid; grid-template-columns: auto 1fr auto auto; gap: 6px; align-items: center; background: var(--karte); border: 1px solid var(--linie);
+  border-radius: 10px 4px 4px 4px; padding: 4px 6px; }
+.seiten .seiten-text { text-align: center; font-weight: 700; font-size: .9rem; }
+.seiten button.leicht { min-height: 40px; min-width: 44px; }
+.seiten button.leicht .symbol { width: 22px; height: 22px; }
+.r-scroll.kompakt { overflow-x: hidden; touch-action: pan-y; }
+table.lp.kompakt { table-layout: fixed; }
+table.lp.kompakt col.c-auf { width: 40%; }
+.lp.kompakt td.auf { min-width: 0; max-width: none; padding: 0 6px; position: static; font-size: .82rem; }
+.lp.kompakt td.auf .alink::after { content: ""; }
+.lp.kompakt td.t { width: auto; min-width: 0; height: 46px; }
+.lp.kompakt th { font-size: .7rem; }
+.lp.kompakt .bal { top: 17px; height: 12px; }
+.lp.kompakt tr.paket td, .lp.kompakt tr.wahl td { white-space: normal; }
+.lp.kompakt td.auf button.kz, .lp.kompakt td.auf span.kz { min-width: 34px; min-height: 30px; padding: 2px 4px; margin-right: 5px; text-align: center; display: inline-block; }
+.kz.s-geplant { background: var(--blau-hell); border-color: var(--b) !important; }
+.kz.s-arbeit { background: var(--b) !important; color: #fff !important; border-color: var(--b) !important; }
+.kz.s-fertig { background: var(--gelb) !important; color: #1d2433 !important; border-color: var(--gelb) !important; }
+.kz.s-angenommen { background: var(--gruen) !important; color: #1d2433 !important; border-color: var(--gruen) !important; }
+.kz.s-ueberarbeiten { background: #fdf1dc !important; color: #7a4f00 !important; border-color: var(--gelb) !important; }
+.kz.s-spaet { background: var(--rot) !important; color: #fff !important; border-color: var(--rot) !important; }
+.kurz-status { font-size: .7rem; color: var(--leise); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kurz-team .symbol { width: 13px; height: 13px; color: var(--lila); vertical-align: -2px; margin-left: 3px; }
+/* Planungsblatt: Unterrichtstage als Kacheln */
+.kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; max-height: 40vh; overflow-y: auto; padding: 2px; }
+.kacheln .tk { display: grid; justify-items: center; gap: 0; padding: 6px 2px; min-height: 52px; white-space: normal; font-size: .72rem; line-height: 1.2; }
+.kacheln .tk b { font-size: .9rem; font-family: var(--mono); }
+.kacheln .tk i { font-style: normal; font-size: .62rem; font-weight: 700; }
+.kacheln .tk.an { background: var(--b); border-color: var(--b); color: #fff; }
+.kacheln .tk.ohne { border-color: var(--gelb); }
+.kacheln .tk.aus { background: repeating-linear-gradient(135deg, transparent 0 4px, var(--linie) 4px 6px); }
+.kacheln .tk.tk-frist { box-shadow: inset 0 0 0 2px var(--rot); }
+.kacheln .tk.tk-frist i { color: var(--rot); }
+.kacheln .tk.an.tk-frist i { color: #fff; }
+.kacheln .tk.an:hover { background: var(--blau); border-color: var(--blau); color: #fff; }

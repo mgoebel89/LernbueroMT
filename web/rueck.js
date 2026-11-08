@@ -68,7 +68,17 @@ const Rueck = (() => {
     v.kann.forEach(k => { if (k.lehrkraft) kannWerte[k.kann_id] = k.lehrkraft; });
     if (e && e.kann) e.kann.forEach(k => { kannWerte[k.kann_id] = k.stufe; });
 
-    const kopf = el('div', { class: 'leise klein' }, name + ' · ' + v.schueler.klasse,
+    // Zweierteam: gemeinsamer Text und gemeinsame Entscheidung, Kann-Einschätzung und Empfehlungen je Person
+    const partner = (v.partner || []).filter(() => !lesen);
+    const partnerWerte = partner.map(pv => {
+      const w = {};
+      pv.kann.forEach(k => { if (k.lehrkraft) w[k.kann_id] = k.lehrkraft; });
+      if (pv.entwurf && pv.entwurf.kann) pv.entwurf.kann.forEach(k => { w[k.kann_id] = k.stufe; });
+      return w;
+    });
+    const alle = [v.schueler.vorname].concat(partner.map(pv => pv.schueler.vorname)).join(' und ');
+    const kopf = el('div', { class: 'leise klein' }, (partner.length ? 'Zweierteam: ' + [name].concat(partner.map(pv => pv.schueler.vorname + ' ' + pv.schueler.nachname)).join(' + ') : name)
+      + ' · ' + v.schueler.klasse,
       v.meldung ? ' · fertig gemeldet ' + L.wann(v.meldung.zeit) + (offen ? '' : ' (' + ({ angenommen: 'angenommen', ueberarbeiten: 'überarbeiten', zurueckgezogen: 'zurückgezogen' }[v.meldung.status] || '') + ')') : '',
       v.termin ? ' · Termin ' + L.tag(v.termin.datum) + ' ' + v.termin.beginn : '',
       v.nachweis ? ' · ' + v.nachweis.versuch.nr + '. Versuch, bereit gemeldet ' + L.wann(v.nachweis.versuch.bereit)
@@ -87,14 +97,17 @@ const Rueck = (() => {
       });
     }
 
-    const kannTab = v.kann.length ? el('div', { class: 'rk-kann' },
-      el('div', { class: 'rk-kopf' }, el('span', { text: 'Kann-Aussage' }), el('span', { text: v.schueler.vorname }), el('span', { text: 'Ihre Sicht' })),
-      v.kann.map(k => el('div', { class: 'rk-zeile' },
+    const kannTabelle = (liste, werte, vorname) => liste.length ? el('div', { class: 'rk-kann' },
+      el('div', { class: 'rk-kopf' }, el('span', { text: 'Kann-Aussage' }), el('span', { text: vorname }), el('span', { text: 'Ihre Sicht' })),
+      liste.map(k => el('div', { class: 'rk-zeile' },
         el('div', {}, el('b', { class: 'mono', text: k.kuerzel + ' ' }), k.text,
-          k.nachher && kannWerte[k.kann_id] && Math.abs(k.nachher - kannWerte[k.kann_id]) >= 2 ? el('div', { class: 'chip gelb klein', text: 'Einschätzungen weichen ab' }) : null),
+          k.nachher && werte[k.kann_id] && Math.abs(k.nachher - werte[k.kann_id]) >= 2 ? el('div', { class: 'chip gelb klein', text: 'Einschätzungen weichen ab' }) : null),
         el('div', { class: 'rk-schueler' }, el('div', {}, el('span', { class: 'leise', text: 'vorher ' }), L.stufeText(k.vorher, zahlen)),
           el('div', {}, el('span', { class: 'leise', text: 'nachher ' }), el('b', { text: L.stufeText(k.nachher, zahlen) }))),
-        L.skala(kannWerte[k.kann_id], lesen ? null : s => { kannWerte[k.kann_id] = s; }, zahlen)))) : null;
+        L.skala(werte[k.kann_id], lesen ? null : s => { werte[k.kann_id] = s; }, zahlen)))) : null;
+    const kannTab = partner.length && v.kann.length
+      ? el('div', { class: 'stapel', style: 'gap:8px' }, [kannTabelle(v.kann, kannWerte, v.schueler.vorname)].concat(partner.map((pv, i) => kannTabelle(pv.kann, partnerWerte[i], pv.schueler.vorname))))
+      : kannTabelle(v.kann, kannWerte, v.schueler.vorname);
 
     // Entscheidung: angenommen / überarbeiten bis / Gespräch nötig (Termin aus Ihrer Sprechzeit, Pflichttermin)
     let entscheidung = null, neueFrist = null, entscheidungsBlock = null, gespraechWahl = null, gespraechHinweis = null;
@@ -190,6 +203,14 @@ const Rueck = (() => {
       lesen ? (liste.children.length ? null : el('p', { class: 'leise klein', text: 'keine' }))
         : el('button', { type: 'button', class: 'klein', style: 'justify-self:start', onclick: () => liste.appendChild(empfehlungZeile(v.auswahl, null, v.frist_vorschlag, true)) },
           L.symbol('plus'), 'Aufgabe empfehlen'));
+    const partnerListen = partner.map(pv => {
+      const l = el('div', { class: 'stapel', style: 'gap:8px' });
+      (pv.entwurf ? pv.entwurf.empfehlungen : []).forEach(x => l.appendChild(empfehlungZeile(v.auswahl, x, v.frist_vorschlag, true)));
+      return l;
+    });
+    const partnerEmp = partner.map((pv, i) => el('div', { class: 'stapel', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Empfehlungen für ' + pv.schueler.vorname }),
+      partnerListen[i], el('button', { type: 'button', class: 'klein', style: 'justify-self:start',
+        onclick: () => partnerListen[i].appendChild(empfehlungZeile(v.auswahl, null, v.frist_vorschlag, true)) }, L.symbol('plus'), 'Aufgabe empfehlen')));
 
     const daten = freigeben => ({
       schueler_id: v.schueler.id, id: e && !e.freigegeben ? e.id : undefined, meldung_id: v.meldung ? v.meldung.id : undefined,
@@ -200,8 +221,18 @@ const Rueck = (() => {
       punkte: punkte ? punkte.value : undefined, note: note ? note.value : undefined,
       kann: kannWerte, empfehlungen: Array.from(liste.children).filter(z => z.lesen).map(z => z.lesen()), freigeben,
     });
-    const speichern = freigeben => async () => {
+    const lesenListe = l => Array.from(l.children).filter(z => z.lesen).map(z => z.lesen());
+    const teamDaten = freigeben => {
       const d = daten(freigeben);
+      if (!partner.length) return d;
+      d.personen = [{ schueler_id: v.schueler.id, id: d.id, meldung_id: d.meldung_id, kann: d.kann, empfehlungen: d.empfehlungen }].concat(partner.map((pv, i) => ({
+        schueler_id: pv.schueler.id, id: pv.entwurf && !pv.entwurf.freigegeben ? pv.entwurf.id : undefined, meldung_id: pv.meldung.id,
+        kann: partnerWerte[i], empfehlungen: lesenListe(partnerListen[i]) })));
+      d.empfehlungen = d.personen.reduce((alle, p) => alle.concat(p.empfehlungen), []);
+      return d;
+    };
+    const speichern = freigeben => async () => {
+      const d = teamDaten(freigeben);
       if (d.empfehlungen.some(x => !x.aufgabe_id)) throw new Error('Bitte bei jeder Empfehlung eine Aufgabe wählen.');
       if (d.entscheidung === 'gespraech') {
         if (!freigeben) { d.entscheidung = undefined; }
@@ -226,7 +257,7 @@ const Rueck = (() => {
       titel, breit: true, abbrechen: 'Schließen',
       knopf: lesen ? null : 'Freigeben',
       weitere: lesen ? [] : [{ text: 'Entwurf speichern', speichern: speichern(false) }],
-      fuss: lesen ? (v.darf ? null : 'Mit Einsicht sehen Sie alles, ändern nichts.') : v.schueler.vorname + ' sieht Text, Ihre Einschätzung und die Empfehlungen erst nach „Freigeben“.',
+      fuss: lesen ? (v.darf ? null : 'Mit Einsicht sehen Sie alles, ändern nichts.') : alle + (partner.length ? ' sehen' : ' sieht') + ' Text, Ihre Einschätzung und die Empfehlungen erst nach „Freigeben“.',
       inhalt: el('div', { class: 'stapel', style: 'gap:14px' }, kopf,
         anlass ? L.feld('Anlass', anlass) : null,
         v.aufgabe && v.aufgabe.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: v.aufgabe.moodle_link, target: '_blank', rel: 'noopener' },
@@ -234,8 +265,8 @@ const Rueck = (() => {
         nw && nw.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: nw.moodle_link, target: '_blank', rel: 'noopener' },
           L.symbol('extern'), 'Test in Moodle ansehen') : null,
         kannTab, entscheidungsBlock, ergebnisBlock,
-        el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Text für ' + v.schueler.vorname + (lesen ? '' : ' (bearbeitbar)') }), text, textWerkzeug),
-        empBlock,
+        el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Text für ' + alle + (lesen ? '' : ' (bearbeitbar)') }), text, textWerkzeug),
+        empBlock, partnerEmp,
         e && !e.freigegeben && !lesen ? L.nebenknopf('Entwurf verwerfen …', () => verwerfen(e, o)) : null),
       speichern: speichern(true),
     }).then(r => { if (r && o.danach) o.danach(r); return r; });

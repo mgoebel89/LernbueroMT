@@ -234,6 +234,7 @@ async function uebersichtZeigen(kid, pid) {
   }
   const k = meine.find(x => x.id === kid) || meine[0];
   const m = await L.api('GET', '/api/klassen/' + k.id + '/matrix' + (pid ? '?paket=' + pid : ''));
+  const tm = m.paket ? await L.api('GET', '/api/klassen/' + k.id + '/teams?paket=' + m.paket.id) : null;
   const kw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + ev.target.value; } }, meine.map(x => el('option', { value: x.id, text: x.name })));
   kw.value = k.id;
   const pw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + k.id + '/' + ev.target.value; } },
@@ -273,7 +274,8 @@ async function uebersichtZeigen(kid, pid) {
               : (s.titel || '').slice(0, 12))),
           el('th', { text: 'Ampel' }), el('th', { text: 'Emp.' }), el('th', { class: 'links', text: 'Hinweis' }))),
         el('tbody', {}, m.zeilen.map(r => el('tr', {},
-          el('td', { class: 'name' }, el('a', { href: '#schueler/' + k.id + '/' + r.id, text: r.name })),
+          el('td', { class: 'name' }, el('a', { href: '#schueler/' + k.id + '/' + r.id, text: r.name }),
+            r.teams && r.teams.length ? el('div', { class: 'leise klein team-name', title: 'Zweierteam' }, L.symbol('klassen'), r.teams.join(' · ')) : null),
           r.zellen.map(c => zelle(r, c)),
           el('td', {}, r.ampel ? el('span', { class: 'ampel a-' + r.ampel }) : el('span', { class: 'ampel a-0' })),
           el('td', { class: 'mono klein', text: r.empfehlungen ? String(r.empfehlungen) : '–' }),
@@ -281,7 +283,42 @@ async function uebersichtZeigen(kid, pid) {
       el('p', { class: 'leise klein', text: '„Ampel“ zeigt die schlechteste Ampel der laufenden Aufgaben, „Emp.“ zählt offene Empfehlungen. Ein Klick auf ein „!“ öffnet die Rückmeldung, ein Klick auf den Namen die Schülerseite. Die Seite aktualisiert sich von selbst.' }));
   L.setzen(inhalt,
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' }), kw, m.pakete.length ? pw : null),
-    el('div', { class: 'uebersicht-raster' }, jetztKarte(j), matrix));
+    el('div', { class: 'uebersicht-raster' }, jetztKarte(j), el('div', { class: 'stapel' }, matrix, tm && (tm.teams.length || tm.moeglich.length) ? teamKarte(k, tm) : null)));
+}
+
+function teamKarte(k, tm) {
+  const status = t => t.status === 'aktiv' ? null : el('span', { class: 'chip gelb klein', text: 'Einladung offen' });
+  return el('div', { class: 'karte stapel team-liste' },
+    el('div', { class: 'zeile' }, el('h3', { text: 'Zweierteams' }),
+      tm.darf && tm.moeglich.length ? el('span', { class: 'rechts' }, el('button', { type: 'button', class: 'klein', onclick: () => teamBilden(k, tm) }, L.symbol('plus'), 'Team bilden')) : null),
+    tm.teams.length ? tm.teams.map(t => el('div', { class: 'jz' },
+      el('div', {}, el('b', { text: t.a.name + ' + ' + t.b.name }), ' ', status(t), el('div', { class: 'leise klein', text: t.titel + (t.bestaetigt ? ' · seit ' + L.tag(t.bestaetigt) : '') })),
+      tm.darf ? el('button', { type: 'button', class: 'klein warnen', onclick: () => teamAufloesen(t) }, 'auflösen') : null))
+      : el('p', { class: 'leise klein', text: 'Noch kein Team. Zu zweit möglich: ' + tm.moeglich.map(x => x.titel).join(', ') + '.' }),
+    el('p', { class: 'leise klein', text: 'Gemeinsam: Plan, Fertigmeldung, Rückmeldung. Je Person: Farben, Kann-Liste, Empfehlungen, Gelingensnachweis.' }));
+}
+
+async function teamBilden(k, tm) {
+  const bereich = el('select', {}, tm.moeglich.map((x, i) => el('option', { value: i, text: x.titel })));
+  const wahl = () => el('select', { required: true }, el('option', { value: '', text: 'Schüler wählen …' }), tm.schueler.map(x => el('option', { value: x.id, text: x.name })));
+  const a = wahl(), b = wahl();
+  const ok = await L.dialog({
+    titel: 'Zweierteam bilden', knopf: 'Team bilden',
+    inhalt: el('div', { class: 'felder' }, L.feld('Wofür', bereich), el('div', { class: 'felder zwei' }, L.feld('Schüler 1', a), L.feld('Schüler 2', b)),
+      el('p', { class: 'leise klein', text: 'Das Team gilt sofort, ohne Bestätigung. Die Pläne der beiden werden für die Teamaufgaben zusammengelegt.' })),
+    speichern: () => {
+      const m = tm.moeglich[Number(bereich.value)];
+      return L.api('POST', '/api/klassen/' + k.id + '/teams', { bereich: m.bereich, bezug_id: m.bezug_id, a_id: Number(a.value), b_id: Number(b.value) });
+    },
+  });
+  if (ok) zeigen();
+}
+
+async function teamAufloesen(t) {
+  const ok = await L.dialog({ titel: 'Team auflösen?', knopf: 'Auflösen', gefaehrlich: true,
+    inhalt: el('p', { text: t.a.name + ' + ' + t.b.name + ' (' + t.titel + '). Beide behalten ihren bisherigen Plan und arbeiten danach einzeln weiter.' }),
+    speichern: () => L.api('POST', '/api/teams/' + t.id + '/aufloesen', {}) });
+  if (ok) zeigen();
 }
 
 // --- Zu pruefen: alle offenen Meldungen und eigene Entwuerfe ---

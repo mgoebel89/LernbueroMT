@@ -18,7 +18,7 @@ Jede Aenderung landet zusaetzlich im Ereignisprotokoll.
 """
 import datetime
 
-from . import db, nachweise, pakete, unterrichtstage as ut
+from . import db, nachweise, pakete, teams, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 AMPELN = ("g", "y", "r")
@@ -143,8 +143,10 @@ def zustand(con, schueler, heute=None):
     hinweise = {"ausfall": [], "ampel_alt": [], "kann_vorher": []}
     kann_lk = {z["kann_id"]: z["stufe"] for z in con.execute(
         "SELECT kann_id, stufe FROM kann_einschaetzung WHERE schueler_id = ? AND art = 'lehrkraft'", (sid,))}
+    ts = teams.stand_schueler(con, schueler)
     for s in strukturen:
         paket = {"id": s["id"], "titel": s["titel"], "lernfeld": s["lernfeld"], "frist": s["frist"], "zeilen": [],
+                 "team_moeglich": s["team"], "team": ts["paket"].get(s["id"]),
                  "kann": [], "nachweise": [{"id": n["id"], "titel": n["titel"], "art": n["art"], "frist": n["frist"], "wirksam": n["wirksam"]}
                                          for n in s["nachweise"]]}
 
@@ -161,7 +163,9 @@ def zustand(con, schueler, heute=None):
             return {"typ": "aufgabe", "id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"], "art": a["art"],
                     "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": st["frist_schueler"], "gewaehlt": gewaehlt,
                     "wahlgruppe_id": a["wahlgruppe_id"], "plan": sorted(plan.get(a["id"], ())), "ist": ist.get(a["id"], {}),
-                    "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"), **st}
+                    "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"),
+                    "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
+                        ts["paket"].get(s["id"]) if s["team"] and a["art"] != "zusatz" else None), **st}
 
         for e in s["ablauf"]:
             if e["typ"] == "aufgabe":
@@ -187,7 +191,7 @@ def zustand(con, schueler, heute=None):
     heute_tag = next((t for t in ut.tage(con, kid, heute, heute)), None)
     abgeschlossen = con.execute("SELECT zeit FROM abschluss WHERE schueler_id = ? AND datum = ?", (sid, heute.isoformat())).fetchone()
     return {"heute": heute.isoformat(), "heute_tag": heute_tag, "abgeschlossen": abgeschlossen[0] if abgeschlossen else None,
-            "spalten": spalten, "pakete": aus, "hinweise": hinweise}
+            "spalten": spalten, "pakete": aus, "hinweise": hinweise, "einladungen": ts["einladungen"]}
 
 
 # --- Aenderungen durch den Schueler ---
@@ -208,7 +212,7 @@ def _log(con, schueler, art, **daten):
     db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", art, **daten)
 
 
-def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None):
+def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None, spiegeln=True):
     """Tage zur Planung einer Aufgabe hinzufuegen oder wegnehmen. grund 'ausfall': Umplanung wegen eines Ausfalltags."""
     heute = _heute(heute)
     a = _aufgabe_sichtbar(con, schueler, aufgabe_id, heute)
@@ -240,10 +244,16 @@ def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None):
     con.executemany("DELETE FROM plan WHERE schueler_id = ? AND aufgabe_id = ? AND datum = ?", [(schueler["id"], aufgabe_id, d) for d in raus])
     if neu or raus:
         daten = {"aufgabe_id": aufgabe_id, "kuerzel": a["kuerzel"], "hinzu": neu, "weg": raus}
-        if grund == "ausfall":
-            daten["grund"] = "ausfall"
+        if grund in ("ausfall", "team"):
+            daten["grund"] = grund
         erstes = not vorher and neu
         _log(con, schueler, "plan_neu" if erstes else "plan", **daten)
+        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
+        if p is not None:   # Teamaufgabe: der Plan gilt fuer beide
+            try:
+                planen(con, p, aufgabe_id, hinzu=neu, weg=raus, grund="team", heute=heute, spiegeln=False)
+            except PlanFehler:
+                pass
     return neu, raus
 
 
@@ -271,7 +281,7 @@ def ausfall_entfernen(con, schueler, heute=None):
     return len(z["hinweise"]["ausfall"])
 
 
-def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None):
+def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None, spiegeln=True):
     heute = _heute(heute)
     a = _aufgabe_sichtbar(con, schueler, aufgabe_id, heute)
     if a["art"] != "wahl":
@@ -285,9 +295,15 @@ def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None):
         if len(andere) >= g["waehlen"]:
             if g["waehlen"] != 1:
                 raise PlanFehler("Du hast schon %d gewählt. Wähle erst eine ab." % g["waehlen"])
-            waehlen(con, schueler, andere[0], False, heute)   # "1 von 3": die bisherige wird getauscht
+            waehlen(con, schueler, andere[0], False, heute, spiegeln)   # "1 von 3": die bisherige wird getauscht
         con.execute("INSERT INTO wahl (schueler_id, aufgabe_id, zeit) VALUES (?, ?, ?)", (schueler["id"], aufgabe_id, db.jetzt()))
         _log(con, schueler, "gewaehlt", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], gruppe=g["buchstabe"])
+        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
+        if p is not None:   # Paket-Team: beide waehlen dieselbe Aufgabe
+            try:
+                waehlen(con, p, aufgabe_id, True, heute, spiegeln=False)
+            except PlanFehler:
+                pass
     else:
         if aufgabe_id not in andere:
             return
@@ -299,6 +315,13 @@ def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None):
         con.execute("DELETE FROM plan WHERE schueler_id = ? AND aufgabe_id = ? AND datum >= ?", (schueler["id"], aufgabe_id, heute.isoformat()))
         con.execute("DELETE FROM wahl WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aufgabe_id))
         _log(con, schueler, "abgewaehlt", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], gruppe=g["buchstabe"], weg=kuenftig)
+        teams.bei_abwahl(con, schueler, aufgabe_id)            # ein Team nur fuer diese Aufgabe endet
+        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
+        if p is not None:                                      # Paket-Team: der Partner waehlt mit ab
+            try:
+                waehlen(con, p, aufgabe_id, False, heute, spiegeln=False)
+            except PlanFehler:
+                pass
 
 
 def tag_abschliessen(con, schueler, eintraege, heute=None):
@@ -393,6 +416,7 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
         spalten.append({"typ": "nachweis", "id": n["id"], "kuerzel": "GN", "titel": nachweise.ART_TEXT[n["art"]] + (" · " + n["titel"] if n["titel"] else ""),
                         "art": n["art"]})
     zeilen = []
+    team_hinweise = teams.matrix_hinweise(con, klasse_id, p["id"])
     for sch in con.execute("SELECT * FROM schueler WHERE klasse_id = ? AND aktiv = 1 ORDER BY nachname, vorname", (klasse_id,)).fetchall():
         st_alle = _stand(con, sch["id"], klasse_id)
         wahl = st_alle["wahl"]
@@ -430,7 +454,7 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
         schlechteste = next((x for x in ("r", "y", "g") if x in ampeln), None)
         offen_emp = sum(1 for liste in st_alle["emp"].values() for e in liste if not e["erledigt"])
         zeilen.append({"id": sch["id"], "name": "%s %s" % (sch["vorname"], sch["nachname"]), "zellen": zellen, "ampel": schlechteste,
-                       "empfehlungen": offen_emp,
+                       "empfehlungen": offen_emp, "teams": team_hinweise.get(sch["id"], []),
                        "hinweis": hinweise[0] if hinweise else ("noch nichts geplant" if all(z["status"] in ("offen", "fehlt") for z in zellen if not z.get("nachweis")) else "")})
     return {"pakete": [{"id": x["id"], "titel": x["titel"], "freigabe": x["freigabe"]} for x in alle],
             "paket": {"id": p["id"], "titel": p["titel"], "freigabe": p["freigabe"]}, "spalten": [

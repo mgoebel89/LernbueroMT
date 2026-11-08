@@ -95,6 +95,8 @@ const L = {
     mikro: 'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3',
     stern: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z',
     zu: 'M18 6 6 18M6 6l12 12',
+    links: 'M15 18l-6-6 6-6',
+    rechts: 'M9 18l6-6-6-6',
   },
 
   // Einschaetzung in 4 Stufen: gespeichert wird immer 1 bis 4, die Klasse zeigt Smileys oder Zahlen
