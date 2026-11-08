@@ -139,15 +139,78 @@ function planZeigen() {
   }
 }
 
+// --- Nicht im Zeitplan: bei Rot fragt ein Overlay nach dem Grund und der Hilfe ---
+
+const GRUENDE = [['schwer', 'schwerer als gedacht'], ['verstehe', 'ich verstehe etwas nicht'], ['gefehlt', 'ich habe gefehlt'],
+  ['verplant', 'verplant, zu wenig geschafft'], ['technik', 'Problem mit Material, Technik oder Moodle'], ['team', 'Problem im Team']];
+const HILFEN = [['jetzt', 'Erklärung jetzt'], ['feedback', 'Feedbackgespräch'], ['frist', 'neue Frist'], ['material', 'Material oder Unterlage'],
+  ['keine', 'keine Hilfe, ich plane neu']];
+
+function auswahlChips(liste, gewaehlt) {
+  const wahl = new Set(gewaehlt || []);
+  const ort = el('div', { class: 'chips-wahl' }, liste.map(([w, t]) => el('button', { type: 'button', class: wahl.has(w) ? 'an' : null,
+    'aria-pressed': wahl.has(w) ? 'true' : 'false', onclick: ev => {
+      if (wahl.has(w)) wahl.delete(w); else wahl.add(w);
+      ev.currentTarget.classList.toggle('an', wahl.has(w));
+      ev.currentTarget.setAttribute('aria-pressed', wahl.has(w) ? 'true' : 'false');
+    } }, t)));
+  return { ort, werte: () => Array.from(wahl) };
+}
+
+// p: vorhandene Angabe (oder nichts); Rückgabe { ort, lesen() } mit lesen() -> { gruende, grund_text, hilfe, hilfe_text }
+function problemFelder(p) {
+  p = p || {};
+  const g = auswahlChips(GRUENDE, p.gruende), h = auswahlChips(HILFEN, p.hilfe);
+  const gt = el('input', { maxlength: 400, placeholder: 'oder in eigenen Worten', value: p.grund_text || '' });
+  const ht = el('input', { maxlength: 400, placeholder: 'oder in eigenen Worten', value: p.hilfe_text || '' });
+  const ort = el('div', { class: 'stapel problem-felder', style: 'gap:8px' },
+    el('div', { class: 'etikett', text: 'Warum bist du nicht im Zeitplan?' }), g.ort, gt,
+    el('div', { class: 'etikett', text: 'Welche Hilfe brauchst du?' }), h.ort, ht);
+  return { ort, lesen: () => ({ gruende: g.werte(), grund_text: gt.value, hilfe: h.werte(), hilfe_text: ht.value }) };
+}
+
+function problemPruefen(p) {
+  if (!p.gruende.length && !p.grund_text.trim()) throw new Error('Bitte sag kurz, warum du nicht im Zeitplan bist.');
+  if (!p.hilfe.length && !p.hilfe_text.trim()) throw new Error('Bitte wähle, welche Hilfe du brauchst (oder „keine Hilfe, ich plane neu“).');
+  return p;
+}
+
+function nachProblem(p) {
+  if (p.hilfe.includes('jetzt')) {
+    L.meldung(z.hilfe.offen ? 'Du stehst in der Hilfe-Reihe (Nr. ' + z.hilfe.platz + ').' : 'Die Hilfe-Reihe geht nur im Lernbüro mit Lehrkraft. Deine Lehrkraft sieht deine Angabe.');
+    hilfeAnzeigen();
+  }
+  if (p.hilfe.includes('feedback')) terminBuchen();
+}
+
 let markLaeuft = 0, markUhr = null;
 async function markieren(aufgabeId, datum, ampel) {
   // die Zelle ist schon eingefärbt; neu gezeichnet wird erst, wenn eine Weile nicht mehr getippt wurde (Status, Scrollstand bleibt)
+  if (ampel === 'r') { await rotFragen(aufgabeId, datum); return; }
   markLaeuft += 1;
   clearTimeout(markUhr);
   try { z = await api('/markieren', { aufgabe_id: aufgabeId, datum, ampel }); }
   catch (e) { L.meldung(e.message, true); markLaeuft -= 1; planZeigen(); return; }
   markLaeuft -= 1;
   markUhr = setTimeout(() => { if (!markLaeuft && (location.hash || '#plan') === '#plan' && !document.querySelector('dialog')) planZeigen(); }, 1500);
+}
+
+async function rotFragen(aufgabeId, datum) {
+  const r = alleZeilen().find(x => x.id === aufgabeId);
+  const f = problemFelder(r && r.probleme ? r.probleme[datum] : null);
+  let problem = null;
+  const ok = await L.dialog({
+    titel: (r ? r.kuerzel + ' ' : '') + 'nicht im Zeitplan · ' + L.tag(datum), knopf: 'Speichern',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' }, f.ort,
+      el('p', { class: 'leise klein', text: 'Deine Lehrkraft sieht deine Angaben. „Erklärung jetzt“ stellt dich in die Hilfe-Reihe, „Feedbackgespräch“ öffnet danach die Terminbuchung.' })),
+    speichern: async () => {
+      problem = problemPruefen(f.lesen());
+      z = await api('/markieren', { aufgabe_id: aufgabeId, datum, ampel: 'r', problem });
+      return true;
+    },
+  });
+  zeigen();   // bei Abbrechen die schon eingefärbte Zelle zurücksetzen, sonst den neuen Stand zeigen
+  if (ok) nachProblem(problem);
 }
 
 async function planen(aufgabeId, hinzu, weg) {
@@ -213,16 +276,20 @@ async function abschliessen() {
   const wahl = {};
   const geplant = alle.filter(r => r.plan.includes(z.heute) || r.ist[z.heute]);
   const andere = alle.filter(r => !geplant.includes(r));
+  const probleme = {};
   const zeile = r => {
     const ampel = r.ist[z.heute] || r.ampel || 'g';
     const box = el('input', { type: 'checkbox', checked: r.plan.includes(z.heute) || !!r.ist[z.heute] });
+    const felder = problemFelder(r.probleme ? r.probleme[z.heute] : null);
+    felder.ort.classList.add('abschluss-problem');
+    probleme[r.id] = felder;
     const knoepfe = el('div', { class: 'ampel-wahl' }, AMPELN.map(([w, t]) => el('button', { type: 'button', class: w === ampel ? 'an' : null,
-      onclick: ev => { wahl[r.id] = w; knoepfe.querySelectorAll('button').forEach(b => b.classList.toggle('an', b === ev.currentTarget)); } },
+      onclick: ev => { wahl[r.id] = w; knoepfe.querySelectorAll('button').forEach(b => b.classList.toggle('an', b === ev.currentTarget)); sichtbar(); } },
       el('i', { class: 'ampel a-' + w }), t)));
     wahl[r.id] = ampel;
-    const sichtbar = () => { knoepfe.hidden = !box.checked; };
+    const sichtbar = () => { knoepfe.hidden = !box.checked; felder.ort.hidden = !box.checked || wahl[r.id] !== 'r'; };
     box.addEventListener('change', sichtbar); sichtbar();
-    return el('div', { class: 'abschluss-zeile', 'data-aufgabe': r.id }, el('label', { class: 'haken' }, box, el('b', { text: r.kuerzel }), r.titel + ' heute bearbeitet'), knoepfe);
+    return el('div', { class: 'abschluss-zeile', 'data-aufgabe': r.id }, el('label', { class: 'haken' }, box, el('b', { text: r.kuerzel }), r.titel + ' heute bearbeitet'), knoepfe, felder.ort);
   };
   const weitere = el('div', { hidden: true }, andere.map(zeile));
   await L.dialog({
@@ -232,9 +299,20 @@ async function abschliessen() {
         'andere Aufgabe bearbeitet …') : null, weitere,
       el('p', { class: 'leise klein', text: 'Jede laufende Aufgabe braucht mindestens einmal pro Woche eine Farbe. Nachtragen geht im Plan.' })),
     speichern: async form => {
+      const rot = [];
       const eintraege = Array.from(form.querySelectorAll('.abschluss-zeile'))
-        .filter(d => d.querySelector('input[type=checkbox]').checked).map(d => ({ aufgabe_id: Number(d.dataset.aufgabe), ampel: wahl[d.dataset.aufgabe] }));
-      return schritt('/abschluss', { eintraege });
+        .filter(d => d.querySelector('input[type=checkbox]').checked).map(d => {
+          const e = { aufgabe_id: Number(d.dataset.aufgabe), ampel: wahl[d.dataset.aufgabe] };
+          if (e.ampel === 'r') {
+            const kz = d.querySelector('b').textContent;
+            try { e.problem = problemPruefen(probleme[d.dataset.aufgabe].lesen()); } catch (f) { throw new Error(kz + ': ' + f.message); }
+            rot.push(e.problem);
+          }
+          return e;
+        });
+      await schritt('/abschluss', { eintraege });
+      rot.forEach(nachProblem);
+      return true;
     },
   });
 }

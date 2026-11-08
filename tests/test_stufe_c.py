@@ -104,7 +104,8 @@ class Plan(unittest.TestCase):
     def test_tagesabschluss_ist_und_ampel(self):
         with db.transaktion(self.con):
             lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p1, "ampel": "g"}, {"aufgabe_id": self.p2, "ampel": "y"}], HEUTE)
-            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "r"}], HEUTE)   # ueberschreibt heute
+            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "r",
+                                                          "problem": {"gruende": ["schwer"], "hilfe": ["frist"]}}], HEUTE)   # ueberschreibt heute
         z = self.z()
         self.assertEqual(z["abgeschlossen"][:10], db.jetzt()[:10])
         self.assertEqual(self.zeile(z, self.p1)["status"], "offen")

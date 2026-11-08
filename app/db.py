@@ -393,6 +393,26 @@ MIGRATIONEN = [
         ende_von TEXT);
     CREATE INDEX team_bezug ON team (bereich, bezug_id)
     """,
+    # 8: "Nicht im Zeitplan" (rote Farbe): warum, und welche Hilfe der Schueler braucht. Je Schueler, Aufgabe und Tag einmal;
+    # wird die Farbe spaeter geaendert, gilt der Eintrag als aufgehoben (bleibt im Verlauf).
+    """
+    CREATE TABLE zeitplan_problem (
+        id INTEGER PRIMARY KEY,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL REFERENCES aufgabe(id) ON DELETE CASCADE,
+        datum TEXT NOT NULL,
+        gruende TEXT NOT NULL DEFAULT '[]',
+        grund_text TEXT NOT NULL DEFAULT '',
+        hilfe TEXT NOT NULL DEFAULT '[]',
+        hilfe_text TEXT NOT NULL DEFAULT '',
+        zeit TEXT NOT NULL,
+        aufgehoben TEXT,
+        gesehen TEXT,
+        gesehen_von INTEGER REFERENCES lehrkraft(id),
+        UNIQUE (schueler_id, aufgabe_id, datum));
+    CREATE INDEX zeitplan_problem_klasse ON zeitplan_problem (klasse_id, gesehen)
+    """,
 ]
 
 

@@ -288,7 +288,7 @@ class Markieren(Basis):
         with db.transaktion(self.con):
             lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "g", HEUTE)
             lernplan.markieren(self.con, self.lena, self.p2, "2026-11-02", "y", HEUTE)
-            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE)        # umfaerben
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE, {"gruende": ["verplant"], "hilfe": ["keine"]})   # umfaerben
         r = self.zeile(self.p2)
         self.assertEqual((r["ist"], r["status"], r["ampel"]), ({"2026-11-02": "y", "2026-11-05": "r"}, "arbeit", "r"))
         with db.transaktion(self.con):
@@ -303,6 +303,45 @@ class Markieren(Basis):
         with self.assertRaisesRegex(lernplan.PlanFehler, "zuerst"):
             lernplan.markieren(self.con, self.lena, self.a1, "2026-11-05", "g", HEUTE)
         self.assertEqual(lernplan.entscheidungen(self.con, self.lena["id"])[0]["art"], "markiert")
+
+
+class NichtImZeitplan(Basis):
+    def test_rot_braucht_grund_und_hilfe(self):
+        from app import zeitplan
+        with self.assertRaisesRegex(lernplan.PlanFehler, "warum"):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE)
+        with self.assertRaisesRegex(lernplan.PlanFehler, "welche Hilfe"):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE, {"gruende": ["schwer"]})
+        with self.assertRaisesRegex(lernplan.PlanFehler, "P2: Bitte"):
+            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "r"}], HEUTE)
+        with db.transaktion(self.con):   # Erklaerung jetzt: in die Hilfe-Reihe (Do 05.11. ist Unterricht mit Lehrkraft)
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "r", HEUTE,
+                               {"gruende": ["verstehe", "quatsch"], "grund_text": "  Kolbenfläche  ", "hilfe": ["jetzt"]})
+        self.assertTrue(termine.hilfe_stand(self.con, self.lena, HEUTE)["offen"])
+        liste = zeitplan.liste_lk(self.con, self.kl)
+        self.assertEqual([(e["kuerzel"], e["text"], e["darf"]) for e in liste],
+                         [("P2", "Grund: ich verstehe etwas nicht, Kolbenfläche · Hilfe: Erklärung jetzt", False)])
+        self.assertEqual(self.zeile(self.p2)["probleme"]["2026-11-05"]["hilfe"], ["jetzt"])
+        m = lernplan.matrix(self.con, self.k, heute=HEUTE)
+        self.assertEqual(next(z for z in m["zeilen"] if z["id"] == self.lena["id"])["hinweis"], "P2 nicht im Zeitplan")
+        with self.assertRaises(klassen.KeinZugriff):
+            zeitplan.gesehen(self.con, self.kl, liste[0]["id"])
+        with db.transaktion(self.con):
+            zeitplan.gesehen(self.con, self.sch, liste[0]["id"])
+        self.assertEqual(zeitplan.liste_lk(self.con, self.gob), [])
+        # spaeter auf gelb: aufgehoben, bleibt im Verlauf
+        with db.transaktion(self.con):
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "y", HEUTE)
+        self.assertEqual(self.zeile(self.p2)["probleme"], {})
+        v = zeitplan.verlauf(self.con, self.gob, self.lena["id"])
+        self.assertTrue(v[0]["aufgehoben"])
+        # Tagesabschluss mit Rot
+        with db.transaktion(self.con):
+            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "r", "problem": {"grund_text": "krank", "hilfe": ["frist"]}}], HEUTE)
+        self.assertEqual(zeitplan.liste_lk(self.con, self.gob)[0]["text"], "Grund: krank · Hilfe: neue Frist")
+        with db.transaktion(self.con):
+            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "g"}], HEUTE)
+        self.assertEqual(zeitplan.liste_lk(self.con, self.gob), [])
 
 
 class Diktat(Basis):

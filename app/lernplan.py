@@ -18,7 +18,7 @@ Jede Aenderung landet zusaetzlich im Ereignisprotokoll.
 """
 import datetime
 
-from . import db, nachweise, pakete, teams, unterrichtstage as ut
+from . import db, nachweise, pakete, teams, termine, unterrichtstage as ut, zeitplan
 
 TAG = datetime.timedelta(days=1)
 AMPELN = ("g", "y", "r")
@@ -144,6 +144,7 @@ def zustand(con, schueler, heute=None):
     kann_lk = {z["kann_id"]: z["stufe"] for z in con.execute(
         "SELECT kann_id, stufe FROM kann_einschaetzung WHERE schueler_id = ? AND art = 'lehrkraft'", (sid,))}
     ts = teams.stand_schueler(con, schueler)
+    probleme = zeitplan.fuer_schueler(con, sid)
     for s in strukturen:
         paket = {"id": s["id"], "titel": s["titel"], "lernfeld": s["lernfeld"], "frist": s["frist"], "zeilen": [],
                  "team_moeglich": s["team"], "team": ts["paket"].get(s["id"]),
@@ -164,7 +165,7 @@ def zustand(con, schueler, heute=None):
                     "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": st["frist_schueler"], "gewaehlt": gewaehlt,
                     "wahlgruppe_id": a["wahlgruppe_id"], "plan": sorted(plan.get(a["id"], ())), "ist": ist.get(a["id"], {}),
                     "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"),
-                    "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
+                    "probleme": probleme.get(a["id"], {}), "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
                         ts["paket"].get(s["id"]) if s["team"] and a["art"] != "zusatz" else None), **st}
 
         for e in s["ablauf"]:
@@ -341,17 +342,41 @@ def tag_abschliessen(con, schueler, eintraege, heute=None):
         a = _aufgabe_sichtbar(con, schueler, aid, heute)
         if a["art"] == "wahl" and not con.execute("SELECT 1 FROM wahl WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aid)).fetchone():
             raise PlanFehler("Wähle die Aufgabe zuerst.")
-        werte[aid] = (e["ampel"], a["kuerzel"])
+        if e["ampel"] == "r":
+            try:
+                problem = zeitplan.pruefen(e.get("problem"))
+            except zeitplan.ZeitplanFehler as f:
+                raise PlanFehler("%s: %s" % (a["kuerzel"], f))
+        else:
+            problem = None
+        werte[aid] = (e["ampel"], a["kuerzel"], problem)
     d = heute.isoformat()
+    for z in con.execute("SELECT aufgabe_id FROM ist WHERE schueler_id = ? AND datum = ? AND ampel = 'r'", (schueler["id"], d)).fetchall():
+        if not (z[0] in werte and werte[z[0]][0] == "r"):
+            zeitplan.aufheben(con, schueler["id"], z[0], d)
     con.execute("DELETE FROM ist WHERE schueler_id = ? AND datum = ?", (schueler["id"], d))
     con.executemany("INSERT INTO ist (schueler_id, aufgabe_id, datum, ampel) VALUES (?, ?, ?, ?)",
                     [(schueler["id"], aid, d, w[0]) for aid, w in werte.items()])
     con.execute("INSERT INTO abschluss (schueler_id, datum, zeit) VALUES (?, ?, ?) ON CONFLICT (schueler_id, datum) DO UPDATE SET zeit = excluded.zeit",
                 (schueler["id"], d, db.jetzt()))
+    for aid, w in werte.items():
+        if w[2]:
+            _nicht_im_zeitplan(con, schueler, aid, w[1], d, w[2], heute)
     _log(con, schueler, "tagesabschluss", datum=d, bearbeitet=[{"aufgabe_id": aid, "kuerzel": w[1], "ampel": w[0]} for aid, w in werte.items()])
 
 
-def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None):
+def _nicht_im_zeitplan(con, schueler, aufgabe_id, kuerzel, datum, problem, heute=None):
+    """Rot: Grund und Hilfe speichern; "Erklaerung jetzt" stellt den Schueler in die Hilfe-Reihe (wenn heute moeglich)."""
+    p = zeitplan.speichern(con, schueler, aufgabe_id, datum, problem)
+    _log(con, schueler, "zeitplan_rot", aufgabe_id=aufgabe_id, kuerzel=kuerzel, datum=datum, beschreibung=zeitplan.text(p))
+    if "jetzt" in p["hilfe"]:
+        try:
+            termine.hilfe_rufen(con, schueler, aufgabe_id, heute)
+        except termine.TerminFehler:
+            pass
+
+
+def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None, problem=None):
     """Farbe (g/y/r) einer Aufgabe an einem Tag setzen, ampel None = Markierung entfernen. Nur heute und Unterrichtstage
     der letzten 7 Tage; ein markierter Tag zaehlt als "bearbeitet" (Ist)."""
     heute = _heute(heute)
@@ -366,6 +391,11 @@ def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None):
     tag = next(iter(ut.tage(con, schueler["klasse_id"], d, d)), None)
     if tag is None or not ut.findet_statt(tag):
         raise PlanFehler("Am %s war kein Unterricht." % d.strftime("%d.%m."))
+    if ampel == "r":
+        try:
+            zeitplan.pruefen(problem)
+        except zeitplan.ZeitplanFehler as f:
+            raise PlanFehler(str(f))
     if ampel:
         con.execute("INSERT INTO ist (schueler_id, aufgabe_id, datum, ampel) VALUES (?, ?, ?, ?) "
                     "ON CONFLICT (schueler_id, aufgabe_id, datum) DO UPDATE SET ampel = excluded.ampel",
@@ -373,6 +403,10 @@ def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None):
     else:
         con.execute("DELETE FROM ist WHERE schueler_id = ? AND aufgabe_id = ? AND datum = ?", (schueler["id"], aufgabe_id, d.isoformat()))
     _log(con, schueler, "markiert", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], datum=d.isoformat(), ampel=ampel)
+    if ampel == "r":
+        _nicht_im_zeitplan(con, schueler, aufgabe_id, a["kuerzel"], d.isoformat(), problem, heute)
+    else:
+        zeitplan.aufheben(con, schueler["id"], aufgabe_id, d.isoformat())
 
 
 def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None):
@@ -417,6 +451,7 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
                         "art": n["art"]})
     zeilen = []
     team_hinweise = teams.matrix_hinweise(con, klasse_id, p["id"])
+    rot_hinweise = zeitplan.offen_je_schueler(con, klasse_id)
     for sch in con.execute("SELECT * FROM schueler WHERE klasse_id = ? AND aktiv = 1 ORDER BY nachname, vorname", (klasse_id,)).fetchall():
         st_alle = _stand(con, sch["id"], klasse_id)
         wahl = st_alle["wahl"]
@@ -451,6 +486,7 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
                     hinweise.append("Ampel %s älter als 1 Woche" % a["kuerzel"])
                 else:
                     ampeln.append(st["ampel"])
+        hinweise = rot_hinweise.get(sch["id"], []) + hinweise
         schlechteste = next((x for x in ("r", "y", "g") if x in ampeln), None)
         offen_emp = sum(1 for liste in st_alle["emp"].values() for e in liste if not e["erledigt"])
         zeilen.append({"id": sch["id"], "name": "%s %s" % (sch["vorname"], sch["nachname"]), "zellen": zellen, "ampel": schlechteste,

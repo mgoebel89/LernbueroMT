@@ -182,7 +182,7 @@ const Raster = (() => {
             const farbe = r.ist[t.datum];
             return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : '') + (mk ? ' mk' : ''),
               'data-datum': kann || mk ? t.datum : null, 'data-farbe': mk ? farbe || '' : null, 'data-geplant': geplant ? '1' : null,
-              title: farbe ? FARBTEXT[farbe] + (geplant ? '' : ' (ungeplant)') : t.grund || null },
+              title: farbe ? FARBTEXT[farbe] + (geplant ? '' : ' (ungeplant)') + (farbe === 'r' && r.probleme && r.probleme[t.datum] ? ' · ' + r.probleme[t.datum].text : '') : t.grund || null },
               balken(i) ? el('span', { class: 'bal' + (balken(i - 1) ? '' : ' a') + (balken(i + 1) ? '' : ' e') + (farbe ? ' f-' + farbe : '') + (farbe && !geplant ? ' ungeplant' : '') }) : null,
               r.wirksam === t.datum && r.gewaehlt ? el('span', { class: 'frist', text: 'F' }) : null);
           }));
@@ -315,6 +315,7 @@ const Raster = (() => {
       team_gebildet: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ' von der Lehrkraft gebildet',
       team_abgelehnt: () => 'Einladung zum Zweierteam (' + d.bezug + ') abgelehnt', team_zurueck: () => 'Einladung zum Zweierteam (' + d.bezug + ') zurückgezogen',
       team_aufgeloest: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ' aufgelöst' + (d.grund ? ' (' + d.grund + ')' : ''),
+      zeitplan_rot: () => d.kuerzel + ' am ' + L.tag(d.datum) + ' nicht im Zeitplan. ' + d.beschreibung,
       markiert: () => d.kuerzel + ' am ' + L.tag(d.datum) + ': ' + (d.ampel ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[d.ampel] : 'Markierung entfernt'),
       gespraech: () => 'Gespräch nötig zu ' + d.kuerzel + ': ' + L.tag(d.datum) + ' ' + d.beginn,
       bereit: () => 'bereit gemeldet für den Gelingensnachweis (' + d.paket + ', ' + d.versuch + '. Versuch)',

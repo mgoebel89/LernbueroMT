@@ -24,7 +24,7 @@ import datetime
 import time
 
 from . import (VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr, rueckmeldung, teams,
-               termine, unterrichtstage, updates)
+               termine, unterrichtstage, updates, zeitplan)
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -212,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
                 unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
                 rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler,
-                nachweise.NachweisFehler, teams.TeamFehler) as f:
+                nachweise.NachweisFehler, teams.TeamFehler, zeitplan.ZeitplanFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -723,7 +723,8 @@ SCHUELER_SCHRITTE = {
     "termin_absagen": lambda con, s, d: termine.absagen_schueler(con, s, _ganzzahl_feld(d, "termin_id")),
     "team": lambda con, s, d: teams.einladen(con, s, d.get("bereich"), _ganzzahl_feld(d, "bezug_id"), _ganzzahl_feld(d, "partner_id")),
     "team_antwort": lambda con, s, d: teams.antworten(con, s, _ganzzahl_feld(d, "team_id"), bool(d.get("annehmen"))),
-    "markieren": lambda con, s, d: lernplan.markieren(con, s, _ganzzahl_feld(d, "aufgabe_id"), d.get("datum"), d.get("ampel") or None),
+    "markieren": lambda con, s, d: lernplan.markieren(con, s, _ganzzahl_feld(d, "aufgabe_id"), d.get("datum"), d.get("ampel") or None,
+                                                      problem=d.get("problem")),
     "bereit": lambda con, s, d: nachweise.bereit_melden(con, s, _ganzzahl_feld(d, "nachweis_id"), rueckmeldung.json_kann(d.get("kann"))),
     "bereit_zurueck": lambda con, s, d: nachweise.zurueckziehen(con, s, _ganzzahl_feld(d, "versuch_id")),
 }
@@ -735,7 +736,7 @@ def api_jetzt(h, con, daten):
     k = h.konto(con)
     h.antwort(200, {"hilfe": termine.hilfe_reihe(con, k), "termine": termine.termine_heute(con, k),
                     "eingang": rueckmeldung.eingang(con, k), "entwuerfe": rueckmeldung.entwuerfe(con, k),
-                    "bereit": nachweise.bereit_liste(con, k)})
+                    "bereit": nachweise.bereit_liste(con, k), "zeitplan": zeitplan.liste_lk(con, k)})
 
 
 def api_hilfe_erledigt(h, con, daten, hid):
@@ -869,6 +870,18 @@ def api_team_aufloesen(h, con, daten, tid):
     h.antwort(200, {"ok": True})
 
 
+def api_zeitplan_gesehen(h, con, daten, pid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        zeitplan.gesehen(con, k, _ganzzahl(pid))
+    h.antwort(200, {"zeitplan": zeitplan.liste_lk(con, k)})
+
+
+def api_zeitplan_verlauf(h, con, daten, kid, sid):
+    k = h.konto(con)
+    h.antwort(200, {"eintraege": zeitplan.verlauf(con, k, _schueler_der_klasse(con, kid, sid))})
+
+
 def api_diktat_stand(h, con, daten):
     h.konto(con)
     h.antwort(200, diktat.stand(DATEN_DIR))
@@ -946,6 +959,8 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/nachweise", api_schueler_nachweise_lk),
     ("GET", r"/api/meldungen/(\d+)/plaetze", api_gespraech_plaetze),
     ("POST", r"/api/meldungen/(\d+)/gespraech", api_gespraech_eintragen),
+    ("POST", r"/api/zeitplan/(\d+)/gesehen", api_zeitplan_gesehen),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/zeitplan", api_zeitplan_verlauf),
     ("GET", r"/api/jetzt", api_jetzt),
     ("POST", r"/api/hilfe/(\d+)/erledigt", api_hilfe_erledigt),
     ("GET", r"/api/rueckmeldung/vorlage", api_rueckmeldung_vorlage),

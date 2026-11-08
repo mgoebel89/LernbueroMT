@@ -169,7 +169,18 @@ function jetztKarte(j) {
     j.bereit.length ? el('span', { class: 'chip lila klein', text: String(j.bereit.length) }) : null,
     j.bereit.length > 5 ? el('a', { class: 'rechts klein', href: '#nachweise', text: 'alle' }) : null),
     j.bereit.length ? j.bereit.slice(0, 5).map(bereitZeile) : el('p', { class: 'leise klein', text: 'Niemand bereit gemeldet.' }));
-  return el('div', { id: 'jetzt', class: 'stapel jetzt' }, hilfe, termine, pruefen, bereit);
+  const zp = j.zeitplan || [];
+  const zeitplanKarte = zp.length ? el('div', { class: 'karte stapel jetzt-zeitplan' }, el('div', { class: 'zeile' }, el('h3', { text: 'Nicht im Zeitplan' }),
+    el('span', { class: 'chip rot klein', text: String(zp.length) })),
+    zp.map(p => el('div', { class: 'jz' }, el('span', { class: 'mono kz-blau', text: p.kuerzel }),
+      el('div', {}, el('b', { text: p.name }), el('div', { class: 'leise klein', text: p.klasse + ' · ' + L.tag(p.datum) + ' · ' + p.titel }),
+        el('div', { class: 'problem-text', text: p.text })),
+      p.darf ? el('button', { type: 'button', class: 'klein', onclick: async () => {
+        try { await L.api('POST', '/api/zeitplan/' + p.id + '/gesehen', {}); const n = await L.api('GET', '/api/jetzt'); document.getElementById('jetzt').replaceWith(jetztKarte(n)); }
+        catch (e) { L.meldung(e.message, true); }
+      } }, L.symbol('haken'), 'gesehen') : null)),
+    el('p', { class: 'leise klein', text: 'Rot markiert mit Grund und gewünschter Hilfe. „Gesehen“ gilt für alle Lehrkräfte der Klasse.' })) : null;
+  return el('div', { id: 'jetzt', class: 'stapel jetzt' }, hilfe, zeitplanKarte, termine, pruefen, bereit);
 }
 
 function bereitStand(b) {
@@ -407,7 +418,11 @@ async function schuelerZeigen(kid, sid, reiter) {
       x.empfehlungen.length ? el('div', { class: 'leise klein', text: 'Empfohlen: ' + x.empfehlungen.map(e => (e.aufgabe ? e.aufgabe.kuerzel : '') + (e.verbindlich ? ' (verbindlich)' : '')).join(', ') }) : null))
       : el('div', { class: 'leer', text: 'Noch keine Rückmeldung.' })));
   } else {
+    const zv = (await L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/zeitplan')).eintraege;
     teile.push(d.plan.pakete.length ? Raster.zeichnen(d.plan, { bearbeitbar: false }) : el('div', { class: 'leer', text: 'Noch kein freigegebenes Paket.' }),
+      zv.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Nicht im Zeitplan' }),
+        el('div', { class: 'liste-klein' }, zv.map(e => el('div', {}, el('span', { class: 'dat', text: L.tag(e.datum) }),
+          el('span', {}, el('b', { text: e.kuerzel + ' ' }), e.text, el('span', { class: 'leise klein', text: e.aufgehoben ? ' · später umgefärbt' : e.gesehen ? ' · gesehen' : ' · neu' })))))) : null,
       el('div', { class: 'karte stapel' }, el('h2', { text: 'Entscheidungen' }),
         el('p', { class: 'leise klein', text: 'Die letzten Einträge. Vergleich mit früheren Ständen und Kennzahlen kommen mit Stufe F.' }),
         d.entscheidungen.length ? el('div', { class: 'liste-klein' }, d.entscheidungen.map(e => el('div', {},

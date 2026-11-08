@@ -450,3 +450,10 @@ table.lp.kompakt col.c-auf { width: 40%; }
 .kacheln .tk.tk-frist i { color: var(--rot); }
 .kacheln .tk.an.tk-frist i { color: #fff; }
 .kacheln .tk.an:hover { background: var(--blau); border-color: var(--blau); color: #fff; }
+/* Nicht im Zeitplan: Auswahl zum Antippen */
+.chips-wahl { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips-wahl button { min-height: 34px; padding: 4px 10px; border-radius: 999px; font-weight: 500; white-space: normal; text-align: left; }
+.chips-wahl button.an { background: var(--rot-hell); border-color: var(--rot); color: var(--rot); font-weight: 700; }
+.abschluss-problem { padding: 8px 10px; border: 1px solid #f0b7cf; border-radius: 10px 4px 4px 4px; background: #fff8fb; }
+.jz .problem-text { font-size: .8rem; }
+.jetzt-zeitplan { border-color: #f0b7cf; box-shadow: inset 4px 0 0 var(--rot); }
