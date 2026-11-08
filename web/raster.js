@@ -1,8 +1,9 @@
 // Lernplan-Raster (Stufe C), für die Schülerseite (bearbeitbar) und die Schülerseite der Lehrkraft (nur lesen).
 // Spalten = Unterrichtstage der Klasse (Ferien und Ausfall schraffiert, „ohne Lehrkraft“ gelb), Zeilen = Aufgaben.
-// Zwei Modi für den Schüler: „markieren“ (Normalfall: Tipp auf heute oder einen Unterrichtstag der letzten 7 Tage schaltet die
-// Farbe grün → gelb → rot → leer, die ganze Zelle wird eingefärbt) und „planen“ (nach dem Knopf „Plan bearbeiten“: Zelle
-// antippen oder mit der Maus über mehrere Tage ziehen; vergangene Tage und Tage ohne Unterricht sind gesperrt).
+// Farbe nach dem Zeitplan wie im TrackingDRS am Balken des Tages (grün, gelb, rot); ein markierter, aber nicht geplanter Tag
+// zeigt einen Balken mit gestricheltem Rand („ungeplant“). Die Farbe wählt der Schüler in einem kleinen Menü: Klick, Tipp
+// oder Rechtsklick auf heute oder einen Unterrichtstag der letzten 7 Tage. Nach dem Knopf „Plan bearbeiten“ plant der Klick
+// (antippen oder mit der Maus ziehen, vergangene Tage und Tage ohne Unterricht gesperrt), der Rechtsklick setzt weiter die Farbe.
 // Fertig gemeldete und angenommene Aufgaben sind ausgegraut. Am Handy und Tablet hochkant: Seite mit 4 Unterrichtstagen zum Blättern.
 'use strict';
 const Raster = (() => {
@@ -102,11 +103,12 @@ const Raster = (() => {
     bauen();
     return el('div', { class: 'stapel', style: 'gap:8px' },
       el('div', { class: 'legende' }, el('span', {}, el('i', { class: 'm-bal' }), 'geplant'),
-        FARBEN.map(f => el('span', {}, el('i', { class: 'm-farbe f-' + f }), kompakt ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[f] : FARBTEXT[f])),
+        FARBEN.map(f => el('span', {}, el('i', { class: 'm-bal f-' + f }), kompakt ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[f] : FARBTEXT[f])),
+        el('span', {}, el('i', { class: 'm-bal f-g ungeplant' }), 'ungeplant'),
         el('span', {}, el('span', { class: 'frist', style: 'position:static', text: 'F' }), 'Frist'), el('span', {}, el('i', { class: 'm-aus' }), 'kein Unterricht'),
         el('span', {}, el('i', { class: 'm-ohne' }), 'ohne Lehrkraft'),
-        planModus ? el('span', { class: 'hinweis-modus', text: kompakt ? 'Planen: Tag antippen, Kürzel = alle Tage' : 'Planen: Tag antippen oder Balken ziehen' })
-          : markModus ? el('span', { class: 'hinweis-modus', text: 'Tag antippen = Farbe für heute und die letzten 7 Tage' }) : null),
+        planModus ? el('span', { class: 'hinweis-modus', text: kompakt ? 'Planen: Tag antippen, Kürzel = alle Tage' : 'Planen: Tag anklicken oder Balken ziehen, Rechtsklick = Farbe' })
+          : markModus ? el('span', { class: 'hinweis-modus', text: kompakt ? 'Tag antippen = Farbe (heute und letzte 7 Tage)' : 'Klick oder Rechtsklick auf einen Tag = Farbe (heute und letzte 7 Tage)' }) : null),
       pager, ort);
 
     function tabelleBauen(tage) {
@@ -147,21 +149,16 @@ const Raster = (() => {
       const tabelle = el('table', { class: 'lp' + (planModus ? ' planmodus' : markModus ? ' markmodus' : '') + (kompakt ? ' kompakt' : '') },
         kompakt ? el('colgroup', {}, el('col', { class: 'c-auf' }), tage.map(() => el('col'))) : null, el('thead', {}, kopf), koerper);
       if (planModus) ziehen(tabelle, o);
-      if (markModus) tabelle.addEventListener('click', ev => {
-        const td = ev.target.closest ? ev.target.closest('td.mk') : null;
-        if (!td) return;
-        const alt = td.dataset.farbe || '';
-        const neu = alt === '' ? 'g' : alt === 'g' ? 'y' : alt === 'y' ? 'r' : null;
-        td.classList.remove('f-g', 'f-y', 'f-r');
-        if (neu) td.classList.add('f-' + neu);
-        td.dataset.farbe = neu || '';
-        o.markieren(Number(td.parentNode.dataset.aufgabe), td.dataset.datum, neu);
-      });
+      if (o.bearbeitbar) {
+        const mk = ev => ev.target.closest ? ev.target.closest('td.mk') : null;
+        tabelle.addEventListener('contextmenu', ev => { const td = mk(ev); if (td) { ev.preventDefault(); farbmenue(td, o); } });
+        if (markModus) tabelle.addEventListener('click', ev => { const td = mk(ev); if (td) farbmenue(td, o); });
+      }
       return tabelle;
 
       function zeile(r, g) {
         const planbar = planModus && r.gewaehlt;
-        const markbar = markModus && r.gewaehlt && !erledigt(r);
+        const markbar = o.bearbeitbar && r.gewaehlt && !erledigt(r);
         const knopf = o.bearbeitbar && r.art === 'wahl' && !kompakt
           ? el('button', { type: 'button', class: 'klein', onclick: () => o.waehlen(r, g) }, r.gewaehlt ? 'abwählen' : 'wählen') : null;
         const kzKlasse = 'kz' + (kompakt && r.gewaehlt ? ' s-' + (r.ueber_frist ? 'spaet' : r.status) : '');
@@ -178,18 +175,70 @@ const Raster = (() => {
             knopf ? ' ' : null, knopf, r.plant_nach_frist && r.gewaehlt ? el('span', { class: 'chip rot klein', text: 'nach der Frist' }) : null, empfehlungChip(r),
             r.team && r.team.bereich === 'aufgabe' ? teamChip(r.team) : null),
           tage.map((t, i) => {
-            const geplant = r.plan.includes(t.datum), voriger = i > 0 && r.plan.includes(tage[i - 1].datum), naechster = i < tage.length - 1 && r.plan.includes(tage[i + 1].datum);
+            const balken = j => j >= 0 && j < tage.length && (r.plan.includes(tage[j].datum) || !!r.ist[tage[j].datum]);
+            const geplant = r.plan.includes(t.datum);
             const kann = planbar && plant(t) && t.datum >= z.heute;
             const mk = markbar && plant(t) && t.datum <= z.heute && t.datum >= markAb;
             const farbe = r.ist[t.datum];
-            return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : '') + (mk ? ' mk' : '') + (farbe ? ' f-' + farbe : ''),
-              'data-datum': kann || mk ? t.datum : null, 'data-farbe': mk ? farbe || '' : null,
-              title: farbe ? FARBTEXT[farbe] : t.grund || null },
-              geplant ? el('span', { class: 'bal' + (voriger ? '' : ' a') + (naechster ? '' : ' e') }) : null,
+            return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : '') + (mk ? ' mk' : ''),
+              'data-datum': kann || mk ? t.datum : null, 'data-farbe': mk ? farbe || '' : null, 'data-geplant': geplant ? '1' : null,
+              title: farbe ? FARBTEXT[farbe] + (geplant ? '' : ' (ungeplant)') : t.grund || null },
+              balken(i) ? el('span', { class: 'bal' + (balken(i - 1) ? '' : ' a') + (balken(i + 1) ? '' : ' e') + (farbe ? ' f-' + farbe : '') + (farbe && !geplant ? ' ungeplant' : '') }) : null,
               r.wirksam === t.datum && r.gewaehlt ? el('span', { class: 'frist', text: 'F' }) : null);
           }));
       }
     }
+  }
+
+  // Kleines Farbmenü an der Zelle: grün, gelb, rot, Farbe entfernen. Die Zelle wird sofort umgefärbt, der Server folgt.
+  let offenesMenue = null;
+  function menueZu() {
+    if (!offenesMenue) return;
+    offenesMenue.remove();
+    offenesMenue = null;
+    document.removeEventListener('pointerdown', ausserhalb, true);
+    document.removeEventListener('keydown', taste, true);
+    window.removeEventListener('scroll', menueZu, true);
+  }
+  function ausserhalb(ev) { if (offenesMenue && !offenesMenue.contains(ev.target)) menueZu(); }
+  function taste(ev) { if (ev.key === 'Escape') menueZu(); }
+
+  function farbmenue(td, o) {
+    menueZu();
+    const alt = td.dataset.farbe || '';
+    const geplant = !!td.dataset.geplant;
+    const setzen = neu => {
+      menueZu();
+      let bal = td.querySelector('.bal');
+      if (!bal && neu) { bal = el('span', { class: 'bal a e' }); td.insertBefore(bal, td.firstChild); }
+      if (bal) {
+        bal.classList.remove('f-g', 'f-y', 'f-r', 'ungeplant');
+        if (neu) { bal.classList.add('f-' + neu); if (!geplant) bal.classList.add('ungeplant'); } else if (!geplant) bal.remove();
+      }
+      td.dataset.farbe = neu || '';
+      td.title = neu ? FARBTEXT[neu] + (geplant ? '' : ' (ungeplant)') : '';
+      o.markieren(Number(td.parentNode.dataset.aufgabe), td.dataset.datum, neu);
+    };
+    const datum = td.dataset.datum;
+    const m = el('div', { class: 'farbmenue', role: 'menu', 'aria-label': 'Farbe für ' + L.tag(datum) },
+      el('div', { class: 'fm-kopf', text: L.tag(datum) + (geplant ? '' : ' · nicht geplant') }),
+      FARBEN.map(f => el('button', { type: 'button', role: 'menuitem', class: alt === f ? 'an' : null, onclick: () => setzen(f) },
+        el('i', { class: 'm-bal f-' + f }), FARBTEXT[f])),
+      alt ? el('button', { type: 'button', role: 'menuitem', class: 'leise', onclick: () => setzen(null) }, L.symbol('zu'), 'Farbe entfernen') : null);
+    document.body.appendChild(m);
+    const z = td.getBoundingClientRect(), b = m.getBoundingClientRect();
+    const links = Math.min(Math.max(8, z.left + z.width / 2 - b.width / 2), window.innerWidth - b.width - 8);
+    const oben = z.bottom + 6 + b.height > window.innerHeight ? Math.max(8, z.top - b.height - 6) : z.bottom + 6;
+    m.style.left = (links + window.scrollX) + 'px';
+    m.style.top = (oben + window.scrollY) + 'px';
+    offenesMenue = m;
+    setTimeout(() => {
+      document.addEventListener('pointerdown', ausserhalb, true);
+      document.addEventListener('keydown', taste, true);
+      window.addEventListener('scroll', menueZu, true);
+    }, 0);
+    const erster = m.querySelector('button');
+    if (erster) erster.focus();
   }
 
   function zellKlasse(t, z) {
