@@ -413,6 +413,35 @@ MIGRATIONEN = [
         UNIQUE (schueler_id, aufgabe_id, datum));
     CREATE INDEX zeitplan_problem_klasse ON zeitplan_problem (klasse_id, gesehen)
     """,
+    # 9: Kann-Liste je Aufgabe: vorher (vor dem ersten Planen), nachher (beim Fertigmelden) und die Einschaetzung der
+    # Lehrkraft gelten jetzt je Aufgabe; aufgabe_id 0 = das ganze Paket (Bereitmeldung zum Gelingensnachweis, Ergebnis).
+    # Bisherige Werte bleiben als Paket-Ebene erhalten und werden auf die verknuepften Aufgaben verteilt.
+    ("ohne_fk", """
+    CREATE TABLE kann_einschaetzung_neu (
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        kann_id INTEGER NOT NULL REFERENCES kann_aussage(id) ON DELETE CASCADE,
+        aufgabe_id INTEGER NOT NULL DEFAULT 0,
+        art TEXT NOT NULL CHECK (art IN ('vorher', 'nachher', 'lehrkraft')),
+        stufe INTEGER NOT NULL CHECK (stufe BETWEEN 1 AND 4),
+        zeit TEXT NOT NULL,
+        wer TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (schueler_id, kann_id, aufgabe_id, art));
+    INSERT INTO kann_einschaetzung_neu (schueler_id, kann_id, aufgabe_id, art, stufe, zeit, wer)
+        SELECT schueler_id, kann_id, 0, art, stufe, zeit, wer FROM kann_einschaetzung;
+    INSERT OR IGNORE INTO kann_einschaetzung_neu (schueler_id, kann_id, aufgabe_id, art, stufe, zeit, wer)
+        SELECT e.schueler_id, e.kann_id, ka.aufgabe_id, 'vorher', e.stufe, e.zeit, e.wer
+        FROM kann_einschaetzung e JOIN kann_aufgabe ka ON ka.kann_id = e.kann_id WHERE e.art = 'vorher';
+    INSERT OR IGNORE INTO kann_einschaetzung_neu (schueler_id, kann_id, aufgabe_id, art, stufe, zeit, wer)
+        SELECT e.schueler_id, e.kann_id, ka.aufgabe_id, 'nachher', e.stufe, e.zeit, e.wer
+        FROM kann_einschaetzung e JOIN kann_aufgabe ka ON ka.kann_id = e.kann_id WHERE e.art = 'nachher'
+        AND EXISTS (SELECT 1 FROM meldung m WHERE m.schueler_id = e.schueler_id AND m.aufgabe_id = ka.aufgabe_id AND m.status != 'zurueckgezogen');
+    INSERT OR IGNORE INTO kann_einschaetzung_neu (schueler_id, kann_id, aufgabe_id, art, stufe, zeit, wer)
+        SELECT e.schueler_id, e.kann_id, ka.aufgabe_id, 'lehrkraft', e.stufe, e.zeit, e.wer
+        FROM kann_einschaetzung e JOIN kann_aufgabe ka ON ka.kann_id = e.kann_id WHERE e.art = 'lehrkraft'
+        AND EXISTS (SELECT 1 FROM rueckmeldung r WHERE r.schueler_id = e.schueler_id AND r.aufgabe_id = ka.aufgabe_id AND r.freigegeben IS NOT NULL);
+    DROP TABLE kann_einschaetzung;
+    ALTER TABLE kann_einschaetzung_neu RENAME TO kann_einschaetzung
+    """),
 ]
 
 

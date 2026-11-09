@@ -48,6 +48,37 @@ def _alle_aufgaben(s):
     return aus
 
 
+def kann_werte(con, schueler_id):
+    """{(kann_id, aufgabe_id, art): (stufe, zeit)}; aufgabe_id 0 = Paket-Ebene (Bereitmeldung, Gelingensnachweis)."""
+    return {(z[0], z[1], z[2]): (z[3], z[4]) for z in con.execute(
+        "SELECT kann_id, aufgabe_id, art, stufe, zeit FROM kann_einschaetzung WHERE schueler_id = ?", (schueler_id,))}
+
+
+def kann_wert(werte, kann_id, art, aufgabe_id=None):
+    """Stufe je Aufgabe; ohne aufgabe_id die Paket-Ebene: der Paketwert, sonst der juengste Wert aus den Aufgaben."""
+    if aufgabe_id:
+        w = werte.get((kann_id, aufgabe_id, art))
+        return w[0] if w else None
+    if (kann_id, 0, art) in werte:
+        return werte[(kann_id, 0, art)][0]
+    kandidaten = [v for (k, a, t), v in werte.items() if k == kann_id and t == art]
+    return max(kandidaten, key=lambda v: v[1])[0] if kandidaten else None
+
+
+def kann_speichern(con, schueler_id, kann_id, aufgabe_id, art, stufe, wer=""):
+    con.execute("INSERT INTO kann_einschaetzung (schueler_id, kann_id, aufgabe_id, art, stufe, zeit, wer) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (schueler_id, kann_id, aufgabe_id, art) DO UPDATE SET stufe = excluded.stufe, zeit = excluded.zeit, wer = excluded.wer",
+                (schueler_id, kann_id, aufgabe_id or 0, art, stufe, db.jetzt(), wer))
+
+
+def kann_vorher_fehlt(con, schueler_id, aufgabe_id):
+    """Kann-Aussagen der Aufgabe ohne Einschaetzung "vorher" (fuer diese Aufgabe)."""
+    return [z[0] for z in con.execute(
+        "SELECT ka.kann_id FROM kann_aufgabe ka JOIN kann_aussage k ON k.id = ka.kann_id WHERE ka.aufgabe_id = ? AND k.aktiv = 1 "
+        "AND NOT EXISTS (SELECT 1 FROM kann_einschaetzung e WHERE e.schueler_id = ? AND e.kann_id = ka.kann_id AND e.aufgabe_id = ? AND e.art = 'vorher')",
+        (aufgabe_id, schueler_id, aufgabe_id))]
+
+
 def _stand(con, schueler_id, klasse_id=None):
     """Plan, Ist, Wahl, letzte Meldung je Aufgabe (ohne zurueckgezogene), eigene Fristen ("ueberarbeiten bis") und
     freigegebene Empfehlungen des Schuelers."""
@@ -76,6 +107,20 @@ def empfehlung_kurz(con, klasse_id, z):
     return {"id": z["id"], "aufgabe_id": z["aufgabe_id"], "verbindlich": bool(z["verbindlich"]), "frist": z["frist"],
             "wirksam": ut.wirksame_frist(con, klasse_id, z["frist"])[0] if z["frist"] else None, "hinweis": z["hinweis"],
             "verfasser": z["verfasser"], "freigegeben": z["freigegeben"], "erledigt": z["erledigt"]}
+
+
+def kann_stand(r):
+    """keine | vorher (vorher fehlt) | arbeit | nachher (fertig gemeldet, nachher fehlt) | fertig | bewertet (Lehrkraft da)."""
+    liste = r.get("kann_liste") or []
+    if not liste:
+        return "keine"
+    if any(k["lehrkraft"] for k in liste) and all(k["nachher"] for k in liste):
+        return "bewertet"
+    if r["status"] in ("fertig", "angenommen"):
+        return "fertig" if all(k["nachher"] for k in liste) else "nachher"
+    if any(not k["vorher"] for k in liste):
+        return "vorher"
+    return "arbeit"
 
 
 MELDESTATUS = {"offen": "fertig", "angenommen": "angenommen", "ueberarbeiten": "ueberarbeiten"}
@@ -137,12 +182,9 @@ def zustand(con, schueler, heute=None):
     plan, ist, wahl = st_alle["plan"], st_alle["ist"], st_alle["wahl"]
     spalten = _spalten(con, kid, strukturen, heute)
     status_tag = {t["datum"]: t for t in spalten}
-    kann_wert = {(z["kann_id"], z["art"]): z["stufe"] for z in con.execute(
-        "SELECT kann_id, art, stufe FROM kann_einschaetzung WHERE schueler_id = ?", (sid,))}
+    kw = kann_werte(con, sid)
     aus = []
-    hinweise = {"ausfall": [], "ampel_alt": [], "kann_vorher": []}
-    kann_lk = {z["kann_id"]: z["stufe"] for z in con.execute(
-        "SELECT kann_id, stufe FROM kann_einschaetzung WHERE schueler_id = ? AND art = 'lehrkraft'", (sid,))}
+    hinweise = {"ausfall": [], "ampel_alt": []}
     ts = teams.stand_schueler(con, schueler)
     probleme = zeitplan.fuer_schueler(con, sid)
     for s in strukturen:
@@ -150,6 +192,14 @@ def zustand(con, schueler, heute=None):
                  "team_moeglich": s["team"], "team": ts["paket"].get(s["id"]),
                  "kann": [], "nachweise": [{"id": n["id"], "titel": n["titel"], "art": n["art"], "frist": n["frist"], "wirksam": n["wirksam"]}
                                          for n in s["nachweise"]]}
+
+        kann_text = {k["id"]: k for k in s["kann"]}
+
+        def kann_liste(a):
+            """Die Kann-Liste dieser Aufgabe: vorher, nachher und Lehrkraft je Aufgabe."""
+            return [{"id": kid, "kuerzel": kann_text[kid]["kuerzel"], "text": kann_text[kid]["text"],
+                     "vorher": kann_wert(kw, kid, "vorher", a["id"]), "nachher": kann_wert(kw, kid, "nachher", a["id"]),
+                     "lehrkraft": kann_wert(kw, kid, "lehrkraft", a["id"])} for kid in a["kann"] if kid in kann_text]
 
         def zeile(a, gruppe=None):
             st = aufgaben_status(a, st_alle, heute)
@@ -165,7 +215,7 @@ def zustand(con, schueler, heute=None):
                     "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": st["frist_schueler"], "gewaehlt": gewaehlt,
                     "wahlgruppe_id": a["wahlgruppe_id"], "plan": sorted(plan.get(a["id"], ())), "ist": ist.get(a["id"], {}),
                     "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"),
-                    "probleme": probleme.get(a["id"], {}), "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
+                    "kann_liste": kann_liste(a), "probleme": probleme.get(a["id"], {}), "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
                         ts["paket"].get(s["id"]) if s["team"] and a["art"] != "zusatz" else None), **st}
 
         for e in s["ablauf"]:
@@ -183,11 +233,12 @@ def zustand(con, schueler, heute=None):
             paket["zeilen"] += [zeile(a) for a in empfohlen]
         for k in s["kann"]:
             paket["kann"].append({"id": k["id"], "kuerzel": k["kuerzel"], "text": k["text"], "aufgaben_kuerzel": k["aufgaben_kuerzel"],
-                                  "aufgaben": k["aufgaben"], "vorher": kann_wert.get((k["id"], "vorher")),
-                                  "nachher": kann_wert.get((k["id"], "nachher")), "lehrkraft": kann_lk.get(k["id"])})
+                                  "aufgaben": k["aufgaben"], "vorher": kann_wert(kw, k["id"], "vorher"),
+                                  "nachher": kann_wert(kw, k["id"], "nachher"), "lehrkraft": kann_wert(kw, k["id"], "lehrkraft")})
         paket["nachweise"] = [nachweise.stand(con, schueler, n, paket["kann"], heute) for n in s["nachweise"]]
-        if paket["kann"] and any(k["vorher"] is None for k in paket["kann"]):
-            hinweise["kann_vorher"].append({"paket_id": s["id"], "titel": s["titel"]})
+        for zeile_ in paket["zeilen"]:
+            if zeile_["typ"] == "aufgabe":
+                zeile_["kann_stand"] = kann_stand(zeile_)
         aus.append(paket)
     heute_tag = next((t for t in ut.tage(con, kid, heute, heute)), None)
     abgeschlossen = con.execute("SELECT zeit FROM abschluss WHERE schueler_id = ? AND datum = ?", (sid, heute.isoformat())).fetchone()
@@ -239,6 +290,8 @@ def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None, 
         if not ut.findet_statt(t):
             raise PlanFehler("Am %s ist kein Unterricht (%s)." % (d, t["grund"]))
     vorher = {z[0] for z in con.execute("SELECT datum FROM plan WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aufgabe_id))}
+    if hinzu and not vorher and grund is None and kann_vorher_fehlt(con, schueler["id"], aufgabe_id):
+        raise PlanFehler("Bitte schätze zuerst die Kann-Liste „vorher“ für %s ein." % a["kuerzel"])
     neu = [d for d in hinzu if d not in vorher]
     raus = [d for d in weg if d in vorher]
     con.executemany("INSERT OR IGNORE INTO plan (schueler_id, aufgabe_id, datum) VALUES (?, ?, ?)", [(schueler["id"], aufgabe_id, d) for d in neu])
@@ -409,7 +462,8 @@ def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None, problem=None)
         zeitplan.aufheben(con, schueler["id"], aufgabe_id, d.isoformat())
 
 
-def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None):
+def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None, aufgabe_id=None):
+    """Einschaetzung "vorher" je Aufgabe (vor dem ersten Planen); aufgabe_id muss mit der Kann-Aussage verknuepft sein."""
     heute = _heute(heute)
     try:
         stufe = int(stufe)
@@ -421,10 +475,15 @@ def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None):
                     "WHERE k.id = ? AND k.aktiv = 1", (kann_id,)).fetchone()
     if k is None or k["klasse_id"] != schueler["klasse_id"] or k["archiviert"] or not k["freigabe"] or k["freigabe"] > heute.isoformat():
         raise PlanFehler("Diese Kann-Aussage gibt es in deinem Plan nicht.")
-    con.execute("INSERT INTO kann_einschaetzung (schueler_id, kann_id, art, stufe, zeit) VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT (schueler_id, kann_id, art) DO UPDATE SET stufe = excluded.stufe, zeit = excluded.zeit",
-                (schueler["id"], kann_id, art, stufe, db.jetzt()))
-    _log(con, schueler, "kann_" + art, kann_id=kann_id, kuerzel=k["kuerzel"], stufe=stufe)
+    try:
+        aufgabe_id = int(aufgabe_id)
+    except (TypeError, ValueError):
+        raise PlanFehler("Bitte die Aufgabe angeben.")
+    a = _aufgabe_sichtbar(con, schueler, aufgabe_id, heute)
+    if not con.execute("SELECT 1 FROM kann_aufgabe WHERE kann_id = ? AND aufgabe_id = ?", (kann_id, aufgabe_id)).fetchone():
+        raise PlanFehler("Diese Kann-Aussage gehört nicht zu %s." % a["kuerzel"])
+    kann_speichern(con, schueler["id"], kann_id, aufgabe_id, art, stufe)
+    _log(con, schueler, "kann_" + art, kann_id=kann_id, kuerzel=k["kuerzel"], aufgabe=a["kuerzel"], stufe=stufe)
 
 
 # --- Sicht der Lehrkraft ---

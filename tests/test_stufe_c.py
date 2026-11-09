@@ -55,7 +55,8 @@ class Plan(unittest.TestCase):
         self.assertNotIn(self.z1, ids)                                                      # Zusatz nur auf Empfehlung
         self.assertEqual(z["spalten"][0]["datum"], "2026-11-02")                            # ab der Freigabe
         self.assertEqual({s["datum"]: s["status"] for s in z["spalten"]}["2026-11-16"], "ausfall")
-        self.assertEqual(z["hinweise"]["kann_vorher"], [{"paket_id": self.pid, "titel": "Elektropneumatik"}])
+        self.assertEqual(self.zeile(z, self.p1)["kann_stand"], "vorher")             # Kann-Liste vorher fehlt noch
+        self.assertEqual(self.zeile(z, self.p2)["kann_stand"], "keine")
         self.assertEqual(self.zeile(z, self.p2)["wirksam"], "2026-11-19")
 
     def test_planen_regeln(self):
@@ -119,16 +120,23 @@ class Plan(unittest.TestCase):
         self.assertEqual([h["kuerzel"] for h in spaeter["hinweise"]["ampel_alt"]], ["P2"])
 
     def test_kann_vorher(self):
+        with self.assertRaisesRegex(lernplan.PlanFehler, "Kann-Liste"):          # erst vorher, dann planen
+            lernplan.planen(self.con, self.lena, self.p1, hinzu=["2026-11-09"], heute=HEUTE)
+        with self.assertRaisesRegex(lernplan.PlanFehler, "gehört nicht"):
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 2, heute=HEUTE, aufgabe_id=self.p2)
         with db.transaktion(self.con):
-            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 2, heute=HEUTE)
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 2, heute=HEUTE, aufgabe_id=self.p1)
+            lernplan.planen(self.con, self.lena, self.p1, hinzu=["2026-11-09"], heute=HEUTE)
         z = self.z()
         self.assertEqual(z["pakete"][0]["kann"][0]["vorher"], 2)
-        self.assertEqual(z["hinweise"]["kann_vorher"], [])
+        r = self.zeile(z, self.p1)
+        self.assertEqual((r["kann_liste"][0]["vorher"], r["kann_stand"]), (2, "arbeit"))
         with self.assertRaises(lernplan.PlanFehler):
-            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 5, heute=HEUTE)
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 5, heute=HEUTE, aufgabe_id=self.p1)
 
     def test_matrix(self):
         with db.transaktion(self.con):
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 2, heute=HEUTE, aufgabe_id=self.p1)
             lernplan.planen(self.con, self.lena, self.p1, hinzu=["2026-11-05"], heute=HEUTE)
             lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p1, "ampel": "y"}], HEUTE)
             lernplan.waehlen(self.con, self.lena, self.a2, heute=HEUTE)

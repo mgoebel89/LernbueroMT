@@ -457,3 +457,16 @@ table.lp.kompakt col.c-auf { width: 40%; }
 .abschluss-problem { padding: 8px 10px; border: 1px solid #f0b7cf; border-radius: 10px 4px 4px 4px; background: #fff8fb; }
 .jz .problem-text { font-size: .8rem; }
 .jetzt-zeitplan { border-color: #f0b7cf; box-shadow: inset 4px 0 0 var(--rot); }
+/* Kann-Liste je Aufgabe */
+.kann-kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.kann-kacheln .kk { display: grid; justify-items: start; gap: 3px; padding: 8px 10px; white-space: normal; text-align: left; min-height: 74px; font-weight: 500; }
+.kann-kacheln .kk.an { border-color: var(--blau); box-shadow: inset 0 0 0 1.5px var(--blau); background: var(--blau-hell); }
+.kk .mono { color: var(--blau); }
+.kk-titel { font-size: .82rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ks { font-size: .68rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.ks.vorher { background: var(--rot-hell); color: var(--rot); } .ks.arbeit { background: var(--blau-hell); color: var(--blau); }
+.ks.nachher { background: var(--gelb); color: #1d2433; } .ks.fertig { background: #f2f7d9; color: #5c6a00; } .ks.bewertet { background: var(--gruen); color: #1d2433; }
+.kacheln.gesperrt { opacity: .4; pointer-events: none; }
+.vorher-block { padding: 8px 10px; border: 1px solid var(--blau-mittel); border-radius: 10px 4px 4px 4px; background: var(--blau-hell); }
+.kann-kacheln .kk { justify-content: start; grid-template-columns: minmax(0, 1fr); }
+.kann-kacheln .kk .ks { white-space: normal; text-align: left; }

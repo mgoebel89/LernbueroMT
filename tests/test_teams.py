@@ -89,8 +89,11 @@ class Teams(Basis):
         with db.transaktion(self.con):
             tid = teams.bilden(self.con, self.sch, self.k, "paket", self.pid, self.lena["id"], self.jonas["id"], HEUTE)
             lernplan.waehlen(self.con, self.lena, self.a1, heute=HEUTE)
-            lernplan.planen(self.con, self.lena, self.p1, hinzu=["2026-11-09"], heute=HEUTE)
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k1, 2, heute=HEUTE, aufgabe_id=self.p1)
+            lernplan.kann_einschaetzen(self.con, self.lena, self.k2, 2, heute=HEUTE, aufgabe_id=self.p1)
+            lernplan.planen(self.con, self.lena, self.p1, hinzu=["2026-11-09"], heute=HEUTE)   # Jonas bekommt den Plan ohne eigene Vorher-Liste
         self.assertTrue(self.zeile(self.a1, self.jonas)["gewaehlt"])
+        self.assertEqual(self.zeile(self.p1, self.jonas)["kann_stand"], "vorher")
         self.assertEqual(self.zeile(self.p1, self.jonas)["plan"], ["2026-11-09"])
         self.assertIsNone(teams.partner(self.con, self.lena["id"], self.z1))                   # Zusatzaufgaben nie im Team
         m = lernplan.matrix(self.con, self.k, heute=HEUTE)

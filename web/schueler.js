@@ -62,11 +62,15 @@ function leiste() {
 }
 
 function leisteZahlen() {
-  const ik = document.querySelector('#schiene a[data-bereich=rueck] .ik');
-  if (!ik) return;
-  const alt = ik.querySelector('.zahl');
-  if (alt) alt.remove();
-  if (z && z.ungelesen) ik.appendChild(el('span', { class: 'zahl', text: String(z.ungelesen) }));
+  const setzen = (bereich, n) => {
+    const ik = document.querySelector('#schiene a[data-bereich=' + bereich + '] .ik');
+    if (!ik) return;
+    const alt = ik.querySelector('.zahl');
+    if (alt) alt.remove();
+    if (n) ik.appendChild(el('span', { class: 'zahl', text: String(n) }));
+  };
+  setzen('rueck', z ? z.ungelesen : 0);
+  setzen('kann', z ? alleZeilen().filter(r => r.gewaehlt && r.kann_stand === 'nachher').length : 0);
 }
 
 async function laden() {
@@ -214,8 +218,31 @@ async function rotFragen(aufgabeId, datum) {
 }
 
 async function planen(aufgabeId, hinzu, weg) {
+  const r = alleZeilen().find(x => x.id === aufgabeId);
+  if (r && hinzu.length && !r.plan.length && r.kann_stand === 'vorher') {   // vor dem ersten Planen: Kann-Liste vorher
+    if (!(await kannVorherFragen(r))) { zeigen(); return; }
+  }
   try { await schritt('/plan', { aufgabe_id: aufgabeId, hinzu, weg }); }
   catch (e) { L.meldung(e.message, true); zeigen(); }
+}
+
+// Kann-Liste „vorher“ einer Aufgabe; Rückgabe true, wenn gespeichert
+async function kannVorherFragen(r) {
+  const werte = {};
+  r.kann_liste.forEach(k => { if (k.vorher) werte[k.id] = k.vorher; });
+  const ok = await L.dialog({
+    titel: 'Kann-Liste ' + r.kuerzel + ' · vorher', knopf: 'Speichern und planen',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('p', { text: 'Bevor du ' + r.kuerzel + ' ' + r.titel + ' planst: Wie gut kannst du das jetzt schon?' }),
+      zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
+      r.kann_liste.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text), L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))),
+    speichern: async () => {
+      if (r.kann_liste.some(k => !werte[k.id])) throw new Error('Bitte schätze jede Kann-Aussage ein.');
+      for (const k of r.kann_liste) z = await api('/kann', { kann_id: k.id, aufgabe_id: r.id, stufe: werte[k.id] });
+      return true;
+    },
+  });
+  return !!ok;
 }
 
 function heuteZeigen() {
@@ -379,6 +406,9 @@ async function aufgabeOeffnen(r, g) {
 function planKacheln(r) {
   let geaendert = false;
   const tage = z.spalten.filter(t => t.datum >= z.heute && t.status !== 'ferien');
+  const vorherFehlt = !r.plan.length && r.kann_stand === 'vorher';
+  const werte = {};
+  r.kann_liste.forEach(k => { if (k.vorher) werte[k.id] = k.vorher; });
   const kachel = t => {
     const frei = t.status === 'unterricht' || t.status === 'ohne';
     const k = el('button', { type: 'button', disabled: !frei,
@@ -396,14 +426,30 @@ function planKacheln(r) {
     r.wirksam === t.datum ? el('i', { text: 'Frist' }) : !frei ? el('i', { text: 'fällt aus' }) : null);
     return k;
   };
-  const ort = el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Planen: Tage antippen' }),
-    tage.length ? el('div', { class: 'kacheln' }, tage.map(kachel)) : el('p', { class: 'leise klein', text: 'Keine kommenden Unterrichtstage.' }));
+  const kachelOrt = tage.length ? el('div', { class: 'kacheln' + (vorherFehlt ? ' gesperrt' : '') }, tage.map(kachel))
+    : el('p', { class: 'leise klein', text: 'Keine kommenden Unterrichtstage.' });
+  let vorherOrt = null;
+  if (vorherFehlt) {
+    const fertig = el('button', { type: 'button', class: 'haupt klein', style: 'justify-self:start', onclick: async () => {
+      if (r.kann_liste.some(k => !werte[k.id])) { L.meldung('Bitte schätze jede Kann-Aussage ein.', true); return; }
+      try {
+        for (const k of r.kann_liste) z = await api('/kann', { kann_id: k.id, aufgabe_id: r.id, stufe: werte[k.id] });
+        geaendert = true;
+        vorherOrt.remove();
+        kachelOrt.classList.remove('gesperrt');
+        const neu = alleZeilen().find(x => x.id === r.id);
+        if (neu) r.kann_stand = neu.kann_stand;
+      } catch (e) { L.meldung(e.message, true); }
+    } }, 'Speichern, dann Tage wählen');
+    vorherOrt = el('div', { class: 'stapel vorher-block', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Erst die Kann-Liste vorher: wie gut kannst du das jetzt schon?' }),
+      r.kann_liste.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text), L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen()))), fertig);
+  }
+  const ort = el('div', { class: 'stapel', style: 'gap:6px' }, vorherOrt, el('div', { class: 'etikett', text: 'Planen: Tage antippen' }), kachelOrt);
   return { ort, geaendert: () => geaendert };
 }
 
 async function fertigMelden(r) {
-  const p = paketVon(r);
-  const kann = p ? p.kann.filter(k => (r.kann || []).includes(k.id)) : [];
+  const kann = r.kann_liste || [];
   const werte = {};
   kann.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
   const hochgeladen = el('input', { type: 'checkbox', required: !!r.moodle_link });
@@ -644,24 +690,52 @@ async function rueckZeigen() {
 
 // --- Kann-Liste ---
 
+const KANN_STAND = { vorher: ['vorher', 'vorher ausfüllen'], arbeit: ['arbeit', 'in Arbeit'], nachher: ['nachher', 'nachher ausfüllen'],
+  fertig: ['fertig', 'ausgefüllt'], bewertet: ['bewertet', 'Einschätzung der Lehrkraft da'] };
+let kannAuswahl = null;
+
 function kannZeigen() {
+  const pakete = z.pakete.map(p => ({ p, zeilen: p.zeilen.filter(r => r.typ === 'aufgabe' && r.gewaehlt && r.kann_liste && r.kann_liste.length) }))
+    .filter(x => x.zeilen.length);
+  const alle = [].concat(...pakete.map(x => x.zeilen));
+  let r = alle.find(x => x.id === kannAuswahl);
+  if (!r) r = alle.find(x => x.kann_stand === 'nachher') || alle.find(x => x.kann_stand === 'vorher' && x.plan.length) || alle[0];
+  kannAuswahl = r ? r.id : null;
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Kann-Liste' }),
     zahlen() ? el('div', { class: 'banner', text: '1 = Ich muss noch viel üben · 2 = Ich brauche noch Hilfe · 3 = Ich kann es meistens allein · 4 = Ich kann es perfekt' }) : null,
-    z.pakete.filter(p => p.kann.length).length ? z.pakete.filter(p => p.kann.length).map(p => el('div', { class: 'karte stapel' },
-      el('h2', { text: p.titel }),
-      el('p', { class: 'leise klein', text: 'Vorher: wie gut kannst du das jetzt schon? Nachher schätzt du dich beim Fertigmelden der Aufgaben ein.' }),
-      p.kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
-        k.aufgaben_kuerzel.length ? el('div', { class: 'leise klein', text: 'erarbeitet in ' + k.aufgaben_kuerzel.join(', ') }) : null,
-        el('div', { class: 'etikett', text: 'Vorher' }),
-        L.skala(k.vorher, async stufe => { try { await schritt('/kann', { kann_id: k.id, stufe }); } catch (e) { L.meldung(e.message, true); } }, zahlen()),
-        k.nachher || k.lehrkraft ? el('div', { class: 'kann-vergleich' },
-          el('span', {}, 'Nachher: ', el('b', { text: L.stufeText(k.nachher, zahlen()) })),
-          k.lehrkraft ? el('span', {}, 'Lehrkraft: ', el('b', { text: L.stufeText(k.lehrkraft, zahlen()) })) : null) : null))))
-      : el('div', { class: 'leer', text: 'Für deine Pakete gibt es noch keine Kann-Liste.' }));
+    pakete.length ? pakete.map(({ p, zeilen }) => el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: p.titel }),
+      el('div', { class: 'kann-kacheln' }, zeilen.map(x => el('button', { type: 'button', class: 'kk' + (x.id === kannAuswahl ? ' an' : ''),
+        onclick: () => { kannAuswahl = x.id; kannZeigen(); } },
+        el('b', { class: 'mono', text: x.kuerzel }), el('span', { class: 'kk-titel', text: x.titel }),
+        el('span', { class: 'ks ' + KANN_STAND[x.kann_stand][0], text: KANN_STAND[x.kann_stand][1] })))))) : null,
+    r ? kannKarte(r) : el('div', { class: 'leer', text: 'Für deine Aufgaben gibt es noch keine Kann-Liste.' }));
 }
 
-// --- Fragen beim Öffnen: Ausfall, Kann-Liste vorher ---
+function kannKarte(r) {
+  const nachherOffen = ['fertig', 'angenommen'].includes(r.status);
+  const vorherOffen = !nachherOffen && r.status !== 'ueberarbeiten' || !r.plan.length;
+  const speichern = (k, art) => async stufe => {
+    try { z = await api('/kann', { kann_id: k.id, aufgabe_id: r.id, stufe, art }); leisteZahlen(); }
+    catch (e) { L.meldung(e.message, true); }
+  };
+  const hinweis = { vorher: 'Fülle „vorher“ aus, bevor du ' + r.kuerzel + ' planst.', arbeit: '„Nachher“ schätzt du beim Fertigmelden ein.',
+    nachher: 'Die Aufgabe ist fertig gemeldet: schätze jetzt „nachher“ ein.', fertig: 'Ausgefüllt. Die Einschätzung deiner Lehrkraft kommt mit der Rückmeldung.',
+    bewertet: 'Vergleiche deine Einschätzung mit der deiner Lehrkraft.' }[r.kann_stand];
+  return el('div', { class: 'karte stapel' },
+    el('div', { class: 'zeile' }, el('h2', { text: r.kuerzel + ' ' + r.titel }), el('span', { class: 'rechts ks ' + KANN_STAND[r.kann_stand][0], text: KANN_STAND[r.kann_stand][1] })),
+    el('p', { class: 'leise klein', text: hinweis }),
+    r.kann_liste.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+      el('div', { class: 'etikett', text: 'Vorher' }),
+      vorherOffen ? L.skala(k.vorher, speichern(k, 'vorher'), zahlen()) : el('div', { class: 'klein', text: L.stufeText(k.vorher, zahlen()) }),
+      el('div', { class: 'etikett', text: 'Nachher' }),
+      nachherOffen ? L.skala(k.nachher, speichern(k, 'nachher'), zahlen())
+        : el('div', { class: 'leise klein', text: k.nachher ? L.stufeText(k.nachher, zahlen()) : 'beim Fertigmelden' }),
+      el('div', { class: 'etikett', text: 'Deine Lehrkraft' }),
+      el('div', { class: k.lehrkraft ? 'klein' : 'leise klein' }, k.lehrkraft ? el('b', { text: L.stufeText(k.lehrkraft, zahlen()) }) : 'noch keine Einschätzung'))));
+}
+
+// --- Fragen beim Öffnen: Einladung, Ausfall ---
 
 async function nachfragen() {
   if (z.einladungen && z.einladungen.length) { await einladungFragen(z.einladungen[0]); return; }
@@ -675,23 +749,6 @@ async function nachfragen() {
         el('p', { class: 'leise klein', text: 'Das zählt nicht als deine Verschiebung.' })),
       speichern: () => schritt('/ausfall', { aktion: 'verschieben' }),
     }).then(async r => { if (r === null) { try { await schritt('/ausfall', { aktion: 'selbst' }); location.hash = 'plan'; } catch (e) { L.meldung(e.message, true); } } });
-    return;
-  }
-  const offen = z.hinweise.kann_vorher[0];
-  if (offen) {
-    const p = z.pakete.find(x => x.id === offen.paket_id);
-    const werte = {};
-    await L.dialog({
-      titel: 'Neues Paket: ' + p.titel, knopf: 'Speichern', abbrechen: 'Später',
-      inhalt: el('div', { class: 'stapel' }, el('p', { text: 'Bevor du planst: Wie gut kannst du das jetzt schon?' }),
-        p.kann.filter(k => !k.vorher).map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
-          L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))),
-      speichern: async () => {
-        for (const [kid, stufe] of Object.entries(werte)) z = await api('/kann', { kann_id: Number(kid), stufe });
-        zeigen();
-        return true;
-      },
-    });
     return;
   }
   if (z.ungelesen && location.hash !== '#rueck') L.meldung(z.ungelesen === 1 ? 'Du hast eine neue Rückmeldung.' : 'Du hast ' + z.ungelesen + ' neue Rückmeldungen.');

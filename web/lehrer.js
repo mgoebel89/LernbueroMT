@@ -364,14 +364,18 @@ async function schuelerZeigen(kid, sid, reiter) {
       'aria-current': a === reiter ? 'page' : null })))];
   if (reiter === 'kann') {
     const zahlen = d.einschaetzer === 'zahl';
-    teile.push(d.plan.pakete.filter(p => p.kann.length).length ? d.plan.pakete.filter(p => p.kann.length).map(p => el('div', { class: 'karte stapel' },
+    const STAND = { vorher: 'vorher fehlt', arbeit: 'in Arbeit', nachher: 'nachher fehlt', fertig: 'ausgefüllt', bewertet: 'mit Ihrer Einschätzung' };
+    const pakete = d.plan.pakete.map(p => ({ p, zeilen: p.zeilen.filter(r => r.typ === 'aufgabe' && r.kann_liste && r.kann_liste.length && r.gewaehlt) }))
+      .filter(x => x.zeilen.length);
+    teile.push(pakete.length ? pakete.map(({ p, zeilen }) => el('div', { class: 'karte stapel' },
       el('h2', { text: p.titel }),
       el('div', { class: 'rollbar' }, el('table', { class: 'liste' },
         el('thead', {}, el('tr', {}, ['Kann-Aussage', 'vorher', 'nachher', 'Lehrkraft'].map(t => el('th', { text: t })))),
-        el('tbody', {}, p.kann.map(k => el('tr', {}, el('td', {}, el('b', { class: 'mono', text: k.kuerzel + ' ' }), k.text,
-          k.aufgaben_kuerzel.length ? el('div', { class: 'leise klein', text: 'erarbeitet in ' + k.aufgaben_kuerzel.join(', ') }) : null),
-        el('td', { text: L.stufeText(k.vorher, zahlen) }), el('td', { text: L.stufeText(k.nachher, zahlen) }),
-        el('td', { class: k.nachher && k.lehrkraft && Math.abs(k.nachher - k.lehrkraft) >= 2 ? 'abweichung' : null, text: L.stufeText(k.lehrkraft, zahlen) }))))))))
+        el('tbody', {}, zeilen.map(r => [
+          el('tr', { class: 'gruppe-zeile' }, el('td', { colspan: 4 }, el('b', { text: r.kuerzel + ' ' + r.titel }), el('span', { class: 'leise klein', text: ' · ' + STAND[r.kann_stand] }))),
+          r.kann_liste.map(k => el('tr', {}, el('td', {}, el('b', { class: 'mono', text: k.kuerzel + ' ' }), k.text),
+            el('td', { text: L.stufeText(k.vorher, zahlen) }), el('td', { text: L.stufeText(k.nachher, zahlen) }),
+            el('td', { class: k.nachher && k.lehrkraft && Math.abs(k.nachher - k.lehrkraft) >= 2 ? 'abweichung' : null, text: L.stufeText(k.lehrkraft, zahlen) })))]))))))
       : el('div', { class: 'leer', text: 'Noch keine Kann-Liste in den freigegebenen Paketen.' }));
   } else if (reiter === 'gn') {
     const g = await L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/nachweise');

@@ -102,11 +102,10 @@ def bereit_melden(con, schueler, nachweis_id, kann=None, heute=None):
         if not 1 <= stufe <= 4:
             raise NachweisFehler("Bitte eine Stufe von 1 bis 4 wählen.")
         werte[k["id"]] = (stufe, k["kuerzel"])
+    from . import lernplan   # erst hier: lernplan nutzt dieses Modul
     jetzt = db.jetzt()
-    for kid, (stufe, _) in werte.items():
-        con.execute("INSERT INTO kann_einschaetzung (schueler_id, kann_id, art, stufe, zeit) VALUES (?, ?, 'nachher', ?, ?) "
-                    "ON CONFLICT (schueler_id, kann_id, art) DO UPDATE SET stufe = excluded.stufe, zeit = excluded.zeit",
-                    (schueler["id"], kid, stufe, jetzt))
+    for kid, (stufe, _) in werte.items():   # Paket-Ebene (aufgabe_id 0)
+        lernplan.kann_speichern(con, schueler["id"], kid, 0, "nachher", stufe)
     nr = (con.execute("SELECT MAX(nr) FROM versuch WHERE schueler_id = ? AND nachweis_id = ?", (schueler["id"], nachweis_id)).fetchone()[0] or 0) + 1
     vid = con.execute("INSERT INTO versuch (schueler_id, nachweis_id, nr, bereit) VALUES (?, ?, ?, ?)",
                       (schueler["id"], nachweis_id, nr, jetzt)).lastrowid

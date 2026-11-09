@@ -63,8 +63,10 @@ class Rueckmeldung(Basis):
         self.assertFalse(self.zeile(self.p1)["ueber_frist"])           # Frist 05.11. war heute, gemeldet zaehlt
         with self.assertRaisesRegex(rm.RueckmeldungFehler, "schon fertig"):
             self.melden()
-        nachher = {z[0]: z[1] for z in self.con.execute("SELECT kann_id, stufe FROM kann_einschaetzung WHERE art = 'nachher'")}
-        self.assertEqual(nachher, {self.k1: 3, self.k2: 2})
+        nachher = {(z[0], z[1]): z[2] for z in self.con.execute("SELECT kann_id, aufgabe_id, stufe FROM kann_einschaetzung WHERE art = 'nachher'")}
+        self.assertEqual(nachher, {(self.k1, self.p1): 3, (self.k2, self.p1): 2})          # je Aufgabe
+        r = self.zeile(self.p1)
+        self.assertEqual(([k["nachher"] for k in r["kann_liste"]], r["kann_stand"]), ([3, 2], "fertig"))
         ein = rm.eingang(self.con, self.sch)
         self.assertEqual([(e["meldung_id"], e["kuerzel"], e["darf"]) for e in ein], [(mid, "P1", True)])
         self.assertFalse(rm.eingang(self.con, self.kl)[0]["darf"])     # Einsicht sieht, darf nicht

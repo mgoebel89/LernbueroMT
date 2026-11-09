@@ -94,9 +94,7 @@ def fertig_melden(con, schueler, aufgabe_id, kann=None, heute=None):
             raise RueckmeldungFehler("Bitte schätze zuerst alle Kann-Aussagen dieser Aufgabe ein.")
         werte[k["id"]] = (_stufe(roh), k["kuerzel"])
     for kid, (stufe, _) in werte.items():
-        con.execute("INSERT INTO kann_einschaetzung (schueler_id, kann_id, art, stufe, zeit) VALUES (?, ?, 'nachher', ?, ?) "
-                    "ON CONFLICT (schueler_id, kann_id, art) DO UPDATE SET stufe = excluded.stufe, zeit = excluded.zeit",
-                    (schueler["id"], kid, stufe, db.jetzt()))
+        lernplan.kann_speichern(con, schueler["id"], kid, aufgabe_id, "nachher", stufe)
     mid = con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit) VALUES (?, ?, ?)",
                       (schueler["id"], aufgabe_id, db.jetzt())).lastrowid
     _log_s(con, schueler, "fertig", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], meldung_id=mid,
@@ -217,7 +215,7 @@ def eingang(con, konto):
                          "WHERE m.status = 'offen' AND s.aktiv = 1 AND s.klasse_id IN (%s) ORDER BY m.zeit" % platz, ids).fetchall():
         kann = [{"kuerzel": z["kuerzel"], "stufe": z["stufe"]} for z in con.execute(
             "SELECT k.kuerzel, e.stufe FROM kann_aufgabe ka JOIN kann_aussage k ON k.id = ka.kann_id "
-            "LEFT JOIN kann_einschaetzung e ON e.kann_id = k.id AND e.schueler_id = ? AND e.art = 'nachher' "
+            "LEFT JOIN kann_einschaetzung e ON e.kann_id = k.id AND e.schueler_id = ? AND e.art = 'nachher' AND e.aufgabe_id = ka.aufgabe_id "
             "WHERE ka.aufgabe_id = ? AND k.aktiv = 1 ORDER BY k.pos", (m["schueler_id"], m["aufgabe_id"]))]
         entwurf = con.execute("SELECT id FROM rueckmeldung WHERE meldung_id = ? AND verfasser_id = ? AND freigegeben IS NULL",
                               (m["id"], konto["id"])).fetchone()
@@ -248,14 +246,14 @@ def entwuerfe(con, konto):
                                  (konto["id"],))]
 
 
-def _kann_stand(con, schueler_id, kann_zeilen, entwurf_id=None):
-    werte = {}
-    for z in con.execute("SELECT kann_id, art, stufe FROM kann_einschaetzung WHERE schueler_id = ?", (schueler_id,)):
-        werte[(z[0], z[1])] = z[2]
+def _kann_stand(con, schueler_id, kann_zeilen, entwurf_id=None, aufgabe_id=None):
+    """Kann-Aussagen mit vorher, nachher und Lehrkraft: je Aufgabe, ohne Aufgabe (Paket, Gelingensnachweis) die Paket-Ebene."""
+    werte = lernplan.kann_werte(con, schueler_id)
     entwurf = {z[0]: z[1] for z in con.execute("SELECT kann_id, stufe FROM rueckmeldung_kann WHERE rueckmeldung_id = ?",
                                                (entwurf_id,))} if entwurf_id else {}
-    return [{"kann_id": k["id"], "kuerzel": k["kuerzel"], "text": k["text"], "vorher": werte.get((k["id"], "vorher")),
-             "nachher": werte.get((k["id"], "nachher")), "lehrkraft": entwurf.get(k["id"], werte.get((k["id"], "lehrkraft")))}
+    return [{"kann_id": k["id"], "kuerzel": k["kuerzel"], "text": k["text"], "vorher": lernplan.kann_wert(werte, k["id"], "vorher", aufgabe_id),
+             "nachher": lernplan.kann_wert(werte, k["id"], "nachher", aufgabe_id),
+             "lehrkraft": entwurf.get(k["id"], lernplan.kann_wert(werte, k["id"], "lehrkraft", aufgabe_id))}
             for k in kann_zeilen]
 
 
@@ -332,7 +330,7 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
                                       "gespraech": termine.gespraech(con, meldung["id"])} if meldung else None,
             "termin": {"id": termin["id"], "datum": termin["datum"], "beginn": termin["beginn"], "anlass_text": termin["anlass_text"]} if termin else None,
             **_aufgabe_kurz(con, a["id"] if a else None), "paket_id": paket_id,
-            "kann": _kann_stand(con, schueler_id, kann_zeilen, entwurf["id"] if entwurf and not entwurf["freigegeben"] else None),
+            "kann": _kann_stand(con, schueler_id, kann_zeilen, entwurf["id"] if entwurf and not entwurf["freigegeben"] else None, a["id"] if a else None),
             "entwurf": daten, "auswahl": auswahl, "frist_vorschlag": neue_frist_vorschlag(con, s["klasse_id"], heute),
             "einschaetzer": con.execute("SELECT einschaetzer FROM klasse WHERE id = ?", (s["klasse_id"],)).fetchone()[0],
             "nachweis": _nachweis_kurz(con, versuch["id"]) if versuch else None,
@@ -519,10 +517,8 @@ def speichern_team(con, konto, d, freigeben=False, heute=None):
 def _freigeben(con, konto, s, rid, meldung, a, entscheidung, neue_frist, kann, empfehlungen, jetzt):
     con.execute("UPDATE rueckmeldung SET freigegeben = ? WHERE id = ?", (jetzt, rid))
     con.execute("UPDATE empfehlung SET freigegeben = ? WHERE rueckmeldung_id = ?", (jetzt, rid))
-    for kid, stufe in kann.items():
-        con.execute("INSERT INTO kann_einschaetzung (schueler_id, kann_id, art, stufe, zeit, wer) VALUES (?, ?, 'lehrkraft', ?, ?, ?) "
-                    "ON CONFLICT (schueler_id, kann_id, art) DO UPDATE SET stufe = excluded.stufe, zeit = excluded.zeit, wer = excluded.wer",
-                    (s["id"], kid, stufe, jetzt, konto["kuerzel"]))
+    for kid, stufe in kann.items():   # Fremdeinschaetzung je Aufgabe, ohne Aufgabe auf Paket-Ebene
+        lernplan.kann_speichern(con, s["id"], kid, a["id"] if a else 0, "lehrkraft", stufe, konto["kuerzel"])
     if entscheidung:
         con.execute("UPDATE meldung SET status = ?, entschieden = ?, entschieden_von = ? WHERE id = ?",
                     (entscheidung, jetzt, konto["id"], meldung["id"]))

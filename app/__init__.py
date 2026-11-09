@@ -1,2 +1,2 @@
 """Lernbüro MT: offener Unterricht mit Lernpaketen, Lernplänen, Kann-Listen und Gelingensnachweisen."""
-VERSION = "0.6.2"
+VERSION = "0.7.0"
