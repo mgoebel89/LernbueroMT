@@ -7,12 +7,13 @@
 // Klassenuebersicht als PDF, Archiv (nur lesbar, wieder aktivieren, endgueltig loeschen nach der Loeschfrist).
 'use strict';
 const { el } = L;
-const S = { konto: null, lehrkraefte: null, update: null, zu_pruefen: 0, nachweise: 0 };
+const S = { konto: null, lehrkraefte: null, update: null, zu_pruefen: 0, nachweise: 0, nachrichten: 0 };
 const inhalt = document.getElementById('inhalt');
 const NAV = [
   { a: 'uebersicht', text: 'Übersicht', s: 'uebersicht' },
   { a: 'pruefen', text: 'Zu prüfen', s: 'pruefen' },
   { a: 'nachweise', text: 'Nachweise', s: 'gn' },
+  { a: 'nachrichten', text: 'Nachrichten', s: 'rueck' },
   { a: 'zeitfenster', text: 'Zeitfenster', s: 'uhr' },
   { a: 'kalender', text: 'Kalender', s: 'kalender' },
   { a: 'klassen', text: 'Klassen', s: 'klassen' },
@@ -61,6 +62,7 @@ async function start() {
     S.update = ich.update;
     S.zu_pruefen = ich.zu_pruefen || 0;
     S.nachweise = ich.nachweise || 0;
+    S.nachrichten = ich.nachrichten || 0;
   } catch (e) {
     if (e.status === 401) { location.replace('/anmelden'); return; }
     fehlerZeigen(e);
@@ -71,7 +73,8 @@ async function start() {
     el('a', { href: '#' + n.a, 'data-ansicht': n.a }, L.symbol(n.s), n.text,
       n.a === 'einstellungen' && S.update ? el('span', { class: 'chip gelb klein', text: 'Update' }) : null,
       n.a === 'pruefen' ? el('span', { class: 'chip rot klein nav-zahl', hidden: !S.zu_pruefen, text: String(S.zu_pruefen) }) : null,
-      n.a === 'nachweise' ? el('span', { class: 'chip lila klein nav-zahl-gn', hidden: !S.nachweise, text: String(S.nachweise) }) : null)));
+      n.a === 'nachweise' ? el('span', { class: 'chip lila klein nav-zahl-gn', hidden: !S.nachweise, text: String(S.nachweise) }) : null,
+      n.a === 'nachrichten' ? el('span', { class: 'chip rot klein nav-zahl-n', hidden: !S.nachrichten, text: String(S.nachrichten) }) : null)));
   document.getElementById('abmelden').addEventListener('click', async () => {
     try { await L.api('POST', '/api/abmelden', {}); } finally { location.href = '/anmelden'; }
   });
@@ -84,31 +87,42 @@ async function start() {
     const ort = document.getElementById('jetzt');
     try {
       const j = await L.api('GET', '/api/jetzt');
-      navZahl(j.eingang.length, j.bereit.length);
+      navZahl(j.eingang.length, j.bereit.length, j.nachrichten);
       if (ort && document.body.contains(ort)) ort.replaceWith(jetztKarte(j));
     } catch (e) { if (e.status === 401) location.replace('/anmelden'); }
   }, 10000);
 }
 
-function navZahl(n, gn) {
+function navZahl(n, gn, na) {
   S.zu_pruefen = n;
   const c = document.querySelector('nav.seite .nav-zahl');
   if (c) { c.textContent = String(n); c.hidden = !n; }
+  if (na !== undefined) {
+    S.nachrichten = na;
+    const x = document.querySelector('nav.seite .nav-zahl-n');
+    if (x) { x.textContent = String(na); x.hidden = !na; }
+  }
   if (gn === undefined) return;
   S.nachweise = gn;
   const g = document.querySelector('nav.seite .nav-zahl-gn');
   if (g) { g.textContent = String(gn); g.hidden = !gn; }
 }
 
+async function navNachrichten() {
+  try { const ich = await L.api('GET', '/api/ich'); navZahl(ich.zu_pruefen, ich.nachweise, ich.nachrichten); } catch (e) { /* beim nächsten Takt */ }
+}
+
 async function zeigen() {
   const [ansicht, id, id2] = (location.hash.slice(1) || 'uebersicht').split('/');
-  const nav = ansicht === 'klasse' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht === 'schueler' ? 'uebersicht' : ansicht;
+  const nav = ansicht === 'klasse' || ansicht === 'teams' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht === 'schueler' ? 'uebersicht' : ansicht;
   const [, , , reiter, stand] = (location.hash.slice(1) || '').split('/');
   document.querySelectorAll('nav.seite a').forEach(a => a.classList.toggle('an', a.dataset.ansicht === nav));
   try {
     if (ansicht === 'uebersicht') await uebersichtZeigen(Number(id) || null, Number(id2) || null);
     else if (ansicht === 'schueler') await schuelerZeigen(Number(id), Number(id2), reiter || 'plan', stand || null);
     else if (ansicht === 'kalender') await Kalender.seite();
+    else if (ansicht === 'teams') await Lernteams.seite(Number(id) || null, id2 || null);
+    else if (ansicht === 'nachrichten') await Lernteams.nachrichten(id || null);
     else if (ansicht === 'pruefen') await pruefenZeigen();
     else if (ansicht === 'nachweise') await nachweiseZeigen();
     else if (ansicht === 'zeitfenster') await Zeiten.seite(Number(id) || null);
@@ -249,7 +263,6 @@ async function uebersichtZeigen(kid, pid) {
   }
   const k = meine.find(x => x.id === kid) || meine[0];
   const m = await L.api('GET', '/api/klassen/' + k.id + '/matrix' + (pid ? '?paket=' + pid : ''));
-  const tm = m.paket ? await L.api('GET', '/api/klassen/' + k.id + '/teams?paket=' + m.paket.id) : null;
   const kw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + ev.target.value; } }, meine.map(x => el('option', { value: x.id, text: x.name })));
   kw.value = k.id;
   const pw = el('select', { onchange: ev => { location.hash = 'uebersicht/' + k.id + '/' + ev.target.value; } },
@@ -300,43 +313,9 @@ async function uebersichtZeigen(kid, pid) {
             r.hinweis || '–', r.hinweise && r.hinweise.length > 1 ? el('span', { class: 'leise klein', text: ' +' + (r.hinweise.length - 1) }) : null)))))),
       el('p', { class: 'leise klein', text: '„Ampel“ zeigt die schlechteste Ampel der laufenden Aufgaben, „Emp.“ zählt offene Empfehlungen. Ein Klick auf ein „!“ öffnet die Rückmeldung, ein Klick auf den Namen die Schülerseite. Die Seite aktualisiert sich von selbst.' }));
   L.setzen(inhalt,
-    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' }), kw, m.pakete.length ? pw : null),
-    el('div', { class: 'uebersicht-raster' }, jetztKarte(j), el('div', { class: 'stapel' }, matrix, tm && (tm.teams.length || tm.moeglich.length) ? teamKarte(k, tm) : null)));
-}
-
-function teamKarte(k, tm) {
-  const status = t => t.status === 'aktiv' ? null : el('span', { class: 'chip gelb klein', text: 'Einladung offen' });
-  return el('div', { class: 'karte stapel team-liste' },
-    el('div', { class: 'zeile' }, el('h3', { text: 'Zweierteams' }),
-      tm.darf && tm.moeglich.length ? el('span', { class: 'rechts' }, el('button', { type: 'button', class: 'klein', onclick: () => teamBilden(k, tm) }, L.symbol('plus'), 'Team bilden')) : null),
-    tm.teams.length ? tm.teams.map(t => el('div', { class: 'jz' },
-      el('div', {}, el('b', { text: t.a.name + ' + ' + t.b.name }), ' ', status(t), el('div', { class: 'leise klein', text: t.titel + (t.bestaetigt ? ' · seit ' + L.tag(t.bestaetigt) : '') })),
-      tm.darf ? el('button', { type: 'button', class: 'klein warnen', onclick: () => teamAufloesen(t) }, 'auflösen') : null))
-      : el('p', { class: 'leise klein', text: 'Noch kein Team. Zu zweit möglich: ' + tm.moeglich.map(x => x.titel).join(', ') + '.' }),
-    el('p', { class: 'leise klein', text: 'Gemeinsam: Plan, Fertigmeldung, Rückmeldung. Je Person: Farben, Kann-Liste, Empfehlungen, Gelingensnachweis.' }));
-}
-
-async function teamBilden(k, tm) {
-  const bereich = el('select', {}, tm.moeglich.map((x, i) => el('option', { value: i, text: x.titel })));
-  const wahl = () => el('select', { required: true }, el('option', { value: '', text: 'Schüler wählen …' }), tm.schueler.map(x => el('option', { value: x.id, text: x.name })));
-  const a = wahl(), b = wahl();
-  const ok = await L.dialog({
-    titel: 'Zweierteam bilden', knopf: 'Team bilden',
-    inhalt: el('div', { class: 'felder' }, L.feld('Wofür', bereich), el('div', { class: 'felder zwei' }, L.feld('Schüler 1', a), L.feld('Schüler 2', b)),
-      el('p', { class: 'leise klein', text: 'Das Team gilt sofort, ohne Bestätigung. Die Pläne der beiden werden für die Teamaufgaben zusammengelegt.' })),
-    speichern: () => {
-      const m = tm.moeglich[Number(bereich.value)];
-      return L.api('POST', '/api/klassen/' + k.id + '/teams', { bereich: m.bereich, bezug_id: m.bezug_id, a_id: Number(a.value), b_id: Number(b.value) });
-    },
-  });
-  if (ok) zeigen();
-}
-
-async function teamAufloesen(t) {
-  const ok = await L.dialog({ titel: 'Team auflösen?', knopf: 'Auflösen', gefaehrlich: true,
-    inhalt: el('p', { text: t.a.name + ' + ' + t.b.name + ' (' + t.titel + '). Beide behalten ihren bisherigen Plan und arbeiten danach einzeln weiter.' }),
-    speichern: () => L.api('POST', '/api/teams/' + t.id + '/aufloesen', {}) });
-  if (ok) zeigen();
+    el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' }), kw, m.pakete.length ? pw : null,
+      el('a', { class: 'knopf', href: '#teams/' + k.id }, L.symbol('klassen'), 'Teams')),
+    el('div', { class: 'uebersicht-raster' }, jetztKarte(j), el('div', { class: 'stapel' }, matrix)));
 }
 
 // --- Zu pruefen: alle offenen Meldungen und eigene Entwuerfe ---
@@ -344,11 +323,16 @@ async function teamAufloesen(t) {
 async function pruefenZeigen() {
   titelSetzen('Zu prüfen');
   const j = await L.api('GET', '/api/jetzt');
-  navZahl(j.eingang.length);
+  navZahl(j.eingang.length, j.bereit.length, j.nachrichten);
   L.setzen(inhalt,
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Zu prüfen' })),
     el('div', { class: 'karte stapel' }, el('p', { class: 'leise klein', text: 'Fertig gemeldete Aufgaben aller Ihrer Klassen, älteste zuerst. Nach dem Gespräch öffnen, Rückmeldung schreiben oder diktieren, entscheiden, freigeben.' }),
       j.eingang.length ? j.eingang.map(eingangZeile) : el('p', { class: 'leise', text: 'Nichts fertig gemeldet.' })),
+    j.wartend && j.wartend.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Wartet auf Bestätigung im Team' }),
+      el('p', { class: 'leise klein', text: 'Einer hat fertig gemeldet, noch nicht alle haben bestätigt. Sie können die Meldung trotzdem öffnen, zum Beispiel wenn jemand fehlt.' }),
+      j.wartend.map(m => el('div', { class: 'jz' }, el('span', { class: 'mono kz-blau', text: m.kuerzel }),
+        el('div', {}, el('b', { text: m.name }), el('div', { class: 'leise klein', text: [m.klasse, 'fertig ' + L.wann(m.zeit), 'wartet auf ' + m.wartet.join(', ')].join(' · ') })),
+        el('button', { type: 'button', class: 'klein', onclick: () => Rueck.oeffnen({ schueler: m.schueler_id, meldung: m.meldung_id, danach: zeigen }) }, 'trotzdem öffnen')))) : null,
     j.entwuerfe.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Ihre Entwürfe' }),
       j.entwuerfe.map(e => el('div', { class: 'jz' }, el('span', { class: 'mono kz-blau', text: e.aufgabe ? e.aufgabe.kuerzel : '–' }),
         el('div', {}, el('b', { text: e.name }), el('div', { class: 'leise klein', text: 'zuletzt ' + L.wann(e.geaendert) })),
@@ -409,6 +393,7 @@ async function schuelerZeigen(kid, sid, reiter, stand) {
       r.darf ? el('button', { type: 'button', class: 'haupt', onclick: () => Rueck.oeffnen({ schueler: sid, danach: zeigen }) }, L.symbol('rueck'), 'Rückmeldung schreiben') : null,
       r.darf ? el('button', { type: 'button', onclick: async () => { if (await Rueck.empfehlen(sid, d.schueler.vorname)) zeigen(); } }, L.symbol('stern'), 'Aufgabe empfehlen') : null,
       el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + kid + '/schueler/' + sid + '/bericht.pdf') }, L.symbol('laden'), 'Lernstand-Bericht (PDF)'),
+      el('a', { class: 'knopf', href: '#nachrichten/s' + sid }, L.symbol('rueck'), 'Nachricht'),
       el('a', { class: 'knopf', href: '#uebersicht/' + kid, text: 'zur Übersicht' })),
     el('nav', { class: 'reiter' }, REITER.map(([a, t]) => el('a', { href: basis + '/' + a, class: a === reiter ? 'an' : null, text: t,
       'aria-current': a === reiter ? 'page' : null })))];
@@ -547,6 +532,7 @@ async function klasseZeigen(kid) {
     team ? el('button', { type: 'button', onclick: () => karten(k.id) }, L.symbol('laden'), 'QR-Karten (PDF)') : null,
     team ? el('button', { type: 'button', onclick: () => klasseBearbeiten(k) }, 'Bearbeiten') : null,
     k.rolle !== 'admin' ? el('a', { class: 'knopf', href: '#pakete/' + k.id }, L.symbol('pakete'), 'Pakete') : null,
+    lesen ? el('a', { class: 'knopf', href: '#teams/' + k.id + '/stamm:' + k.id }, L.symbol('klassen'), 'Teams und Stammteams') : null,
     lesen ? el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + k.id + '/berichte.pdf' + (k.archiviert ? '?alle=1' : '')) }, L.symbol('laden'), 'Lernstand-Berichte (PDF)') : null,
     lesen ? el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + k.id + '/uebersicht.pdf') }, L.symbol('laden'), 'Klassenübersicht (PDF)') : null,
     k.darf_archiv && !k.archiviert ? el('button', { type: 'button', class: 'warnen', onclick: () => archivieren(k) }, L.symbol('archiv'), 'Archivieren …') : null);

@@ -22,8 +22,25 @@ const Raster = (() => {
 
   function teamChip(t) {
     if (!t) return null;
-    return el('span', { class: 'chip lila-hell klein', title: t.status === 'aktiv' ? 'Zweierteam: gemeinsamer Plan, eine Fertigmeldung' : 'Einladung offen' },
-      L.symbol('klassen'), t.status === 'aktiv' ? 'mit ' + (t.partner || (t.a.name + ' + ' + t.b.name)) : t.eingeladen_von_mir ? 'eingeladen: ' + t.partner : 'Einladung von ' + t.partner);
+    const namen = t.partner !== undefined ? t.partner : (t.mitglieder || []).filter(m => m.status === 'aktiv').map(m => m.name).join(', ');
+    return el('span', { class: 'chip lila-hell klein', title: 'Lernteam: gemeinsamer Plan, gemeinsame Fertigmeldung' },
+      L.symbol('klassen'), t.name + (namen ? ' · mit ' + namen : ''));
+  }
+
+  // Team einer Einheit (Paket, Wahlgruppe, Aufgabe): Chip mit dem Team, sonst ein Knopf zum Finden oder ein Hinweis
+  function teamTeil(z, schluessel, o, kompakt) {
+    const e = schluessel && z.einheiten ? z.einheiten[schluessel] : null;
+    if (!e) return null;
+    if (e.team) {
+      const chip = teamChip(e.team);
+      return o.team ? el('button', { type: 'button', class: 'team-knopf leicht', onclick: () => o.team(e) }, chip) : chip;
+    }
+    if (!o.team) return el('span', { class: 'pm', text: '· ' + e.modus_text });
+    if (e.selbst) {
+      return el('button', { type: 'button', class: 'klein team-knopf' + (e.modus === 'pflicht' ? ' haupt' : ''), onclick: () => o.team(e) },
+        L.symbol('klassen'), kompakt ? 'Team' : e.modus === 'pflicht' ? 'Team finden' + (e.stichtag ? ' bis ' + L.tag(e.stichtag) : '') : 'im Team arbeiten');
+    }
+    return el('span', { class: 'chip klein', title: 'Deine Lehrkraft bildet die Teams.' }, L.symbol('klassen'), kompakt ? 'Team folgt' : 'Team: teilt deine Lehrkraft ein');
   }
 
   function empfehlungChip(r) {
@@ -122,8 +139,7 @@ const Raster = (() => {
       z.pakete.forEach(p => {
         koerper.appendChild(el('tr', { class: 'paket' }, el('td', { colspan: spalten }, p.titel,
           el('span', { class: 'pm', text: [kompakt ? null : p.lernfeld, p.frist && p.frist.wirksam ? 'Frist ' + L.tag(p.frist.wirksam) : ''].filter(Boolean).join(' · ') }),
-          p.team ? teamChip(p.team) : p.team_moeglich && o.team ? el('button', { type: 'button', class: 'klein team-knopf', onclick: () => o.team({ bereich: 'paket', bezug_id: p.id, titel: 'das ganze Paket ' + p.titel }) },
-            L.symbol('klassen'), 'zu zweit bearbeiten') : p.team_moeglich ? el('span', { class: 'pm', text: '· zu zweit möglich' }) : null)));
+          teamTeil(z, p.einheit, o, kompakt))));
         let gruppe = null;
         p.zeilen.forEach(r => {
           if (r.typ === 'empfohlen') {
@@ -135,7 +151,7 @@ const Raster = (() => {
             gruppe = r;
             koerper.appendChild(el('tr', { class: 'wahl' }, el('td', { colspan: spalten },
               'Wahlgruppe ' + r.buchstabe + (r.titel && !kompakt ? ' · ' + r.titel : '') + ' · wähle ' + r.waehlen + ' von ' + r.anzahl,
-              el('span', { class: 'pm', text: r.gewaehlt.length ? 'gewählt: ' + r.gewaehlt.join(', ') : 'noch nicht gewählt' }))));
+              el('span', { class: 'pm', text: r.gewaehlt.length ? 'gewählt: ' + r.gewaehlt.join(', ') : 'noch nicht gewählt' }), teamTeil(z, r.einheit, o, kompakt))));
             return;
           }
           koerper.appendChild(zeile(r, r.art === 'wahl' ? gruppe : null));
@@ -171,11 +187,11 @@ const Raster = (() => {
         return el('tr', { class: [r.gewaehlt ? '' : 'blass', r.art === 'zusatz' ? 'zusatz' : '', erledigt(r) ? 'erledigt' : ''].join(' ').trim() || null, 'data-aufgabe': r.id,
           'data-planbar': planbar ? '1' : null },
           el('td', { class: 'auf', title: r.titel }, kz, titel,
-            kompakt ? (r.team && r.team.status === 'aktiv' ? el('span', { class: 'kurz-team', title: 'mit ' + r.team.partner }, L.symbol('klassen')) : null)
+            kompakt ? (r.team ? el('span', { class: 'kurz-team', title: r.team.name + (r.team.partner ? ' · mit ' + r.team.partner : '') }, L.symbol('klassen')) : null)
               : r.art === 'pflicht' ? el('span', { class: 'art', text: 'Pflicht' }) : r.art === 'zusatz' ? el('span', { class: 'art', text: r.zusatz_art === 'vertiefung' ? 'Vertiefung' : 'Wiederholung' }) : null),
           kompakt ? null : el('td', { class: 'st' }, r.gewaehlt ? statusChip(r) : null, r.ampel && r.gewaehlt ? el('span', { class: 'ampel a-' + r.ampel, title: 'letzte Ampel' }) : null,
             knopf ? ' ' : null, knopf, r.plant_nach_frist && r.gewaehlt ? el('span', { class: 'chip rot klein', text: 'nach der Frist' }) : null, empfehlungChip(r),
-            r.team && r.team.bereich === 'aufgabe' ? teamChip(r.team) : null,
+            r.einheit && r.einheit.indexOf('aufgabe:') === 0 && r.gewaehlt ? teamTeil(z, r.einheit, o, false) : null,
             o.marken ? (o.marken[r.id] || []).map(m => el('span', { class: 'd-tag ' + m[0], text: m[1] })) : null),
           tage.map((t, i) => {
             const balken = j => j >= 0 && j < tage.length && (r.plan.includes(tage[j].datum) || !!r.ist[tage[j].datum]);
@@ -316,11 +332,23 @@ const Raster = (() => {
       hilfe: () => 'Hilfe gerufen', hilfe_zurueck: () => 'Hilfe zurückgezogen', hilfe_erledigt: () => 'Hilfe erledigt',
       termin_gebucht: () => 'Feedbacktermin gebucht: ' + L.tag(d.datum) + ' ' + d.beginn,
       termin_abgesagt: () => 'Termin ' + L.tag(d.datum) + ' ' + d.beginn + ' abgesagt',
-      team_eingeladen: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ': Einladung',
+      team_eingeladen: () => d.eingeladen ? 'Team (' + d.bezug + '): eingeladen ' + d.eingeladen.join(', ') : 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ': Einladung',
       team_aktiv: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ' bestätigt',
-      team_gebildet: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ' von der Lehrkraft gebildet',
+      team_gebildet: () => 'Team (' + d.bezug + ')' + (d.partner ? ' mit ' + d.partner : '') + ' von der Lehrkraft gebildet',
       team_abgelehnt: () => 'Einladung zum Zweierteam (' + d.bezug + ') abgelehnt', team_zurueck: () => 'Einladung zum Zweierteam (' + d.bezug + ') zurückgezogen',
-      team_aufgeloest: () => 'Zweierteam (' + d.bezug + ') mit ' + d.partner + ' aufgelöst' + (d.grund ? ' (' + d.grund + ')' : ''),
+      team_aufgeloest: () => 'Team (' + d.bezug + ') aufgelöst' + (d.grund ? ' (' + d.grund + ')' : ''),
+      team_gegruendet: () => 'Team gegründet (' + d.bezug + ')' + (d.offen ? ', offen zum Beitreten' : ''),
+      team_beigetreten: () => d.name + ' ist dem Team (' + d.bezug + ') beigetreten',
+      team_zugeteilt: () => d.name + ' dem Team (' + d.bezug + ') zugeteilt',
+      team_entfernt: () => d.name + ' aus dem Team (' + d.bezug + ') genommen',
+      team_austritt_wunsch: () => 'möchte das Team (' + d.bezug + ') verlassen: „' + d.grund + '“',
+      team_austritt: () => d.name + ' hat das Team (' + d.bezug + ') verlassen, mit Zustimmung',
+      team_austritt_abgelehnt: () => 'Austrittswunsch (' + d.bezug + ') abgelehnt',
+      team_verlassen: () => d.name + ' hat das Team (' + d.bezug + ') verlassen' + (d.grund ? ' (' + d.grund + ')' : ''),
+      fertig_team: () => d.team + ' hat ' + d.kuerzel + ' für das Team fertig gemeldet',
+      fertig_bestaetigt: () => d.kuerzel + ': Fertigmeldung des Teams bestätigt' + (d.kann && d.kann.length ? ' (' + d.kann.map(k => k.kuerzel + ' ' + k.stufe).join(', ') + ')' : ''),
+      fertig_noch_nicht: () => d.kuerzel + ': noch nicht fertig (Nachricht ans Team)',
+      teamtermin: () => 'Teamtermin eingetragen: ' + L.tag(d.datum) + ' ' + d.beginn,
       zeitplan_rot: () => d.kuerzel + ' am ' + L.tag(d.datum) + ' nicht im Zeitplan. ' + d.beschreibung,
       markiert: () => d.kuerzel + ' am ' + L.tag(d.datum) + ': ' + (d.ampel ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[d.ampel] : 'Markierung entfernt'),
       gespraech: () => 'Gespräch nötig zu ' + d.kuerzel + ': ' + L.tag(d.datum) + ' ' + d.beginn,

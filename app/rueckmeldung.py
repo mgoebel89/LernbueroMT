@@ -96,22 +96,57 @@ def fertig_melden(con, schueler, aufgabe_id, kann=None, heute=None):
         werte[k["id"]] = (_stufe(roh), k["kuerzel"])
     for kid, (stufe, _) in werte.items():
         lernplan.kann_speichern(con, schueler["id"], kid, aufgabe_id, "nachher", stufe)
-    mid = con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit) VALUES (?, ?, ?)",
-                      (schueler["id"], aufgabe_id, db.jetzt())).lastrowid
+    jetzt = db.jetzt()
+    mid = con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit, bestaetigt) VALUES (?, ?, ?, ?)",
+                      (schueler["id"], aufgabe_id, jetzt, jetzt)).lastrowid
     _log_s(con, schueler, "fertig", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], meldung_id=mid,
            kann=[{"kuerzel": k, "stufe": s} for s, k in werte.values()])
-    # Teamaufgabe: einer meldet fuer beide (die Kann-Einschaetzung bleibt je Person)
-    p = teams.partner(con, schueler["id"], aufgabe_id)
-    if p is not None:
+    # Teamaufgabe: einer meldet, die anderen bestaetigen (mit ihrer eigenen Kann-Liste "nachher"); erst dann "Zu pruefen"
+    for p in teams.teamkollegen(con, schueler["id"], aufgabe_id):
         letzte_p = con.execute("SELECT status FROM meldung WHERE schueler_id = ? AND aufgabe_id = ? AND status != 'zurueckgezogen' "
                                "ORDER BY id DESC LIMIT 1", (p["id"], aufgabe_id)).fetchone()
-        if not (letzte_p and letzte_p[0] in ("offen", "angenommen")):
-            pid = con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit, gruppe) VALUES (?, ?, ?, ?)",
-                              (p["id"], aufgabe_id, db.jetzt(), mid)).lastrowid
-            con.execute("UPDATE meldung SET gruppe = ? WHERE id = ?", (mid, mid))
-            db.ereignis(con, p["klasse_id"], p["id"], "schueler", "Schüler", "fertig", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"],
-                        meldung_id=pid, team="%s %s" % (schueler["vorname"], schueler["nachname"]))
+        if letzte_p and letzte_p[0] in ("offen", "angenommen"):
+            continue
+        pid = con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit, gruppe) VALUES (?, ?, ?, ?)",
+                          (p["id"], aufgabe_id, jetzt, mid)).lastrowid
+        con.execute("UPDATE meldung SET gruppe = ? WHERE id = ?", (mid, mid))
+        db.ereignis(con, p["klasse_id"], p["id"], "schueler", "Schüler", "fertig_team", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"],
+                    meldung_id=pid, team="%s %s" % (schueler["vorname"], schueler["nachname"]))
     return mid
+
+
+def fertig_bestaetigen(con, schueler, meldung_id, kann=None):
+    """Teammitglied bestaetigt die Fertigmeldung des Teams, mit seiner Kann-Liste "nachher"."""
+    m = con.execute("SELECT m.*, a.kuerzel FROM meldung m JOIN aufgabe a ON a.id = m.aufgabe_id WHERE m.id = ? AND m.schueler_id = ?",
+                    (meldung_id, schueler["id"])).fetchone()
+    if m is None or m["status"] != "offen" or m["bestaetigt"]:
+        raise RueckmeldungFehler("Diese Fertigmeldung wartet nicht (mehr) auf dich.")
+    lernplan.vorher_pflicht(con, schueler["id"], m["aufgabe_id"], m["kuerzel"], RueckmeldungFehler)
+    werte = {}
+    for k in _kann_der_aufgabe(con, m["aufgabe_id"]):
+        roh = (kann or {}).get(str(k["id"]), (kann or {}).get(k["id"]))
+        if roh is None:
+            raise RueckmeldungFehler("Bitte schätze zuerst alle Kann-Aussagen dieser Aufgabe ein.")
+        werte[k["id"]] = (_stufe(roh), k["kuerzel"])
+    for kid, (stufe, _) in werte.items():
+        lernplan.kann_speichern(con, schueler["id"], kid, m["aufgabe_id"], "nachher", stufe)
+    con.execute("UPDATE meldung SET bestaetigt = ? WHERE id = ?", (db.jetzt(), meldung_id))
+    _log_s(con, schueler, "fertig_bestaetigt", aufgabe_id=m["aufgabe_id"], kuerzel=m["kuerzel"], meldung_id=meldung_id,
+           kann=[{"kuerzel": k, "stufe": s} for s, k in werte.values()])
+
+
+def noch_nicht_fertig(con, schueler, meldung_id, text=""):
+    """Teammitglied sieht die Aufgabe noch nicht fertig: Nachricht an das Team, die Meldung wartet weiter."""
+    from . import nachrichten
+    m = con.execute("SELECT m.*, a.kuerzel FROM meldung m JOIN aufgabe a ON a.id = m.aufgabe_id WHERE m.id = ? AND m.schueler_id = ?",
+                    (meldung_id, schueler["id"])).fetchone()
+    if m is None or m["status"] != "offen" or m["bestaetigt"]:
+        raise RueckmeldungFehler("Diese Fertigmeldung wartet nicht (mehr) auf dich.")
+    t = teams.team_fuer_aufgabe(con, schueler["id"], m["aufgabe_id"])
+    zusatz = " ".join(str(text or "").split())[:400]
+    nachrichten.senden_schueler(con, schueler, "Ich sehe %s noch nicht fertig.%s" % (m["kuerzel"], " " + zusatz if zusatz else ""),
+                                team_id=t["id"] if t else None)
+    _log_s(con, schueler, "fertig_noch_nicht", aufgabe_id=m["aufgabe_id"], kuerzel=m["kuerzel"], meldung_id=meldung_id)
 
 
 def zurueckziehen(con, schueler, meldung_id):
@@ -185,6 +220,7 @@ def _rueckmeldung_daten(con, r, klasse_id):
             "meldung_id": r["meldung_id"], "termin_id": r["termin_id"], **_aufgabe_kurz(con, r["aufgabe_id"]),
             "paket_id": r["paket_id"], "paket": paket[0] if paket else None, "text": r["text"], "entscheidung": r["entscheidung"],
             "neue_frist": r["neue_frist"], "erstellt": r["erstellt"], "geaendert": r["geaendert"], "freigegeben": r["freigegeben"],
+            "team_text": r["team_text"],
             "gelesen": r["gelesen"], "kann": kann, "empfehlungen": emp, "versuch_id": r["versuch_id"], "ergebnis": r["ergebnis"],
             "punkte": r["punkte"], "note": r["note"], "nachweis": _nachweis_kurz(con, r["versuch_id"])}
 
@@ -203,8 +239,9 @@ def _sichtbare_klassen(con, konto):
                                       "WHERE kl.lehrkraft_id = ? AND k.archiviert = 0", (konto["id"],))]
 
 
-def eingang(con, konto):
-    """Offene Meldungen aller Klassen, in denen die Lehrkraft im Team oder mit Einsicht ist, aelteste zuerst."""
+def eingang(con, konto, wartend=False):
+    """Offene Meldungen aller Klassen, in denen die Lehrkraft im Team oder mit Einsicht ist, aelteste zuerst.
+    Teammeldungen erst, wenn alle Mitglieder bestaetigt haben; wartend=True liefert genau die noch wartenden."""
     ids = _sichtbare_klassen(con, konto)
     if not ids:
         return []
@@ -223,19 +260,22 @@ def eingang(con, konto):
         aus.append({"meldung_id": m["id"], "zeit": m["zeit"], "schueler_id": m["schueler_id"], "name": "%s %s" % (m["vorname"], m["nachname"]),
                     "klasse_id": m["klasse_id"], "klasse": m["klasse"], "aufgabe_id": m["aufgabe_id"], "kuerzel": m["kuerzel"],
                     "titel": m["titel"], "paket": m["paket"], "kann": kann, "entwurf_id": entwurf[0] if entwurf else None,
-                    "gespraech": termine.gespraech(con, m["id"]), "gruppe": m["gruppe"],
+                    "gespraech": termine.gespraech(con, m["id"]), "gruppe": m["gruppe"], "bestaetigt": m["bestaetigt"],
                     "darf": klassen.zugriff(con, m["klasse_id"], konto) == "team"})
-    # Teammeldungen: ein Eintrag fuer beide, der Partner haengt daran
+    # Teammeldungen: ein Eintrag fuer das ganze Team, die anderen haengen daran
     haupt, ergebnis = {}, []
     for e in aus:
         if e["gruppe"] and e["gruppe"] in haupt:
             haupt[e["gruppe"]].setdefault("partner", []).append(e)
             haupt[e["gruppe"]]["name"] += " + " + e["name"]
+            if not e["bestaetigt"]:
+                haupt[e["gruppe"]]["wartet"].append(e["name"])
             continue
         if e["gruppe"]:
             haupt[e["gruppe"]] = e
+            e["wartet"] = [] if e["bestaetigt"] else [e["name"]]
         ergebnis.append(e)
-    return ergebnis
+    return [e for e in ergebnis if bool(e.get("wartet")) == wartend]
 
 
 def entwuerfe(con, konto):
@@ -327,7 +367,7 @@ def vorlage(con, konto, schueler_id, meldung_id=None, termin_id=None, rueckmeldu
                                                                "WHERE ka.aufgabe_id = ? AND k.aktiv = 1 ORDER BY k.pos", (x["id"],))]})
     daten = _rueckmeldung_daten(con, entwurf, s["klasse_id"]) if entwurf else None
     return {"schueler": {"id": s["id"], "vorname": s["vorname"], "nachname": s["nachname"], "klasse_id": s["klasse_id"], "klasse": s["klasse"]},
-            "darf": darf, "meldung": {"id": meldung["id"], "zeit": meldung["zeit"], "status": meldung["status"],
+            "darf": darf, "meldung": {"id": meldung["id"], "zeit": meldung["zeit"], "status": meldung["status"], "bestaetigt": meldung["bestaetigt"],
                                       "gespraech": termine.gespraech(con, meldung["id"])} if meldung else None,
             "termin": {"id": termin["id"], "datum": termin["datum"], "beginn": termin["beginn"], "anlass_text": termin["anlass_text"]} if termin else None,
             **_aufgabe_kurz(con, a["id"] if a else None), "paket_id": paket_id,
@@ -415,7 +455,8 @@ def speichern(con, konto, d, freigeben=False, heute=None):
     if paket_id and not con.execute("SELECT 1 FROM paket WHERE id = ? AND klasse_id = ?", (paket_id, s["klasse_id"])).fetchone():
         raise RueckmeldungFehler("Dieses Paket gehört nicht zur Klasse des Schülers.")
     text = str(d.get("text") or "").replace("\r\n", "\n").strip()
-    if len(text) > MAX_TEXT:
+    team_text = str(d.get("team_text") or "").replace("\r\n", "\n").strip()
+    if len(text) > MAX_TEXT or len(team_text) > MAX_TEXT:
         raise RueckmeldungFehler("Der Text ist zu lang (höchstens %d Zeichen)." % MAX_TEXT)
     entscheidung = d.get("entscheidung") or None
     if entscheidung not in (None, "angenommen", "ueberarbeiten"):
@@ -467,18 +508,18 @@ def speichern(con, konto, d, freigeben=False, heute=None):
             raise RueckmeldungFehler("Bitte das Ergebnis wählen: gelungen oder noch nicht gelungen.")
         if ergebnis == "nicht" and not neue_frist:
             raise RueckmeldungFehler("Bitte eine neue Frist setzen.")
-        if not text and not empfehlungen and not entscheidung and not ergebnis:
+        if not text and not team_text and not empfehlungen and not entscheidung and not ergebnis:
             raise RueckmeldungFehler("Die Rückmeldung ist leer.")
     jetzt = db.jetzt()
     if alt:
         rid = alt["id"]
-        con.execute("UPDATE rueckmeldung SET text = ?, entscheidung = ?, neue_frist = ?, ergebnis = ?, punkte = ?, note = ?, geaendert = ? "
-                    "WHERE id = ?", (text, entscheidung, neue_frist, ergebnis, punkte, note, jetzt, rid))
+        con.execute("UPDATE rueckmeldung SET text = ?, team_text = ?, entscheidung = ?, neue_frist = ?, ergebnis = ?, punkte = ?, note = ?, "
+                    "geaendert = ? WHERE id = ?", (text, team_text, entscheidung, neue_frist, ergebnis, punkte, note, jetzt, rid))
     else:
-        rid = con.execute("INSERT INTO rueckmeldung (schueler_id, verfasser_id, meldung_id, termin_id, aufgabe_id, paket_id, text, "
+        rid = con.execute("INSERT INTO rueckmeldung (schueler_id, verfasser_id, meldung_id, termin_id, aufgabe_id, paket_id, text, team_text, "
                           "entscheidung, neue_frist, erstellt, geaendert, versuch_id, ergebnis, punkte, note) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                          (s["id"], konto["id"], meldung["id"] if meldung else None, termin_id, aufgabe_id, paket_id, text,
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          (s["id"], konto["id"], meldung["id"] if meldung else None, termin_id, aufgabe_id, paket_id, text, team_text,
                            entscheidung, neue_frist, jetzt, jetzt, versuch_id, ergebnis, punkte, note)).lastrowid
     con.execute("DELETE FROM rueckmeldung_kann WHERE rueckmeldung_id = ?", (rid,))
     con.executemany("INSERT INTO rueckmeldung_kann (rueckmeldung_id, kann_id, stufe) VALUES (?, ?, ?)", [(rid, k, v) for k, v in kann.items()])
@@ -493,10 +534,10 @@ def speichern(con, konto, d, freigeben=False, heute=None):
 
 
 def speichern_team(con, konto, d, freigeben=False, heute=None):
-    """Rueckmeldung zu einer Teammeldung: gemeinsamer Text, gemeinsame Entscheidung, je Person Kann und Empfehlungen.
-    d["personen"]: [{schueler_id, id (Entwurf), meldung_id, kann, empfehlungen}]"""
+    """Rueckmeldung zu einer Teammeldung: Teil "An das ganze Team" (team_text) und gemeinsame Entscheidung, je Person
+    eigener Text, Kann und Empfehlungen. d["personen"]: [{schueler_id, id (Entwurf), meldung_id, text, kann, empfehlungen}]"""
     personen = d.get("personen")
-    if not isinstance(personen, list) or not 1 <= len(personen) <= 2:
+    if not isinstance(personen, list) or not 1 <= len(personen) <= teams.MAX_GROESSE + 4:
         raise RueckmeldungFehler("Ungültige Teamrückmeldung.")
     gruppen = set()
     for p in personen:
@@ -510,7 +551,7 @@ def speichern_team(con, konto, d, freigeben=False, heute=None):
     for p in personen:
         dd = {k: v for k, v in d.items() if k != "personen"}
         dd.update(schueler_id=p.get("schueler_id"), id=p.get("id"), meldung_id=p.get("meldung_id"), kann=p.get("kann") or {},
-                  empfehlungen=p.get("empfehlungen") or [])
+                  empfehlungen=p.get("empfehlungen") or [], text=p.get("text", d.get("text")) or "")
         ids.append(speichern(con, konto, dd, freigeben, heute))
     return ids
 
@@ -592,8 +633,7 @@ def zaehler(con, konto):
     ids = _sichtbare_klassen(con, konto)
     if not ids:
         return 0
-    return con.execute("SELECT COUNT(*) FROM meldung m JOIN schueler s ON s.id = m.schueler_id WHERE m.status = 'offen' AND s.aktiv = 1 "
-                       "AND s.klasse_id IN (%s)" % ",".join("?" * len(ids)), ids).fetchone()[0]
+    return len(eingang(con, konto))
 
 
 def json_kann(wert):

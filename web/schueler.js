@@ -69,7 +69,7 @@ function leisteZahlen() {
     if (alt) alt.remove();
     if (n) ik.appendChild(el('span', { class: 'zahl', text: String(n) }));
   };
-  setzen('rueck', z ? z.ungelesen : 0);
+  setzen('rueck', z ? z.ungelesen + (z.nachrichten_ungelesen || 0) : 0);
   setzen('kann', z ? alleZeilen().filter(r => r.gewaehlt && r.kann_stand === 'nachher').length : 0);
 }
 
@@ -129,7 +129,10 @@ function planZeigen() {
       z.pakete.length ? el('button', { type: 'button', class: planen_ ? 'haupt' : null, onclick: () => { modus = planen_ ? 'markieren' : 'planen'; planZeigen(); } },
         L.symbol(planen_ ? 'haken' : 'plan'), planen_ ? 'Planen beenden' : 'Plan bearbeiten') : null),
     n ? el('div', { class: 'banner' }, 'Nächste Frist: ', el('b', { text: n.kuerzel + ' ' + n.titel }), ' am ' + L.tag(n.wirksam) + '.') : null,
-    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, modus, planen, markieren, waehlen: wahlFragen, oeffnen: aufgabeOeffnen, team: teamEinladen,
+    Object.values(z.einheiten || {}).filter(e => e.selbst && e.modus === 'pflicht' && !e.team).map(e => el('div', { class: 'banner team-banner zeile' },
+      el('span', {}, L.symbol('klassen'), ' ', el('b', { text: e.titel }), ' bearbeitet ihr im Team' + (e.stichtag ? '. Findet euer Team bis ' + L.tag(e.stichtag) : '.')),
+      el('button', { type: 'button', class: 'klein haupt rechts', onclick: () => teamBlatt(e) }, 'Team finden'))),
+    z.pakete.length ? Raster.zeichnen(z, { bearbeitbar: true, modus, planen, markieren, waehlen: wahlFragen, oeffnen: aufgabeOeffnen, team: teamBlatt,
       nachweis: () => { location.hash = 'gn'; } })
       : el('div', { class: 'leer', text: 'Noch ist kein Lernpaket für dich freigegeben.' }),
     z.pakete.length ? el('p', { class: 'leise klein', text: 'Kürzel antippen: Aufgabe öffnen, fertig melden. Name antippen: Aufgabe in Moodle.' }) : null,
@@ -369,8 +372,8 @@ async function aufgabeOeffnen(r, g) {
   let folge = null;
   const weitere = [];
   if (r.status === 'fertig' && r.meldung) weitere.push({ text: 'Meldung zurückziehen', speichern: () => (folge = 'zurueck') });
-  if (r.team_moeglich && !r.team && meldbar(r)) weitere.push({ text: 'zu zweit bearbeiten', speichern: () => (folge = 'team') });
-  if (r.team && r.team.status === 'eingeladen' && r.team.eingeladen_von_mir) weitere.push({ text: 'Einladung zurückziehen', speichern: () => (folge = 'team_zurueck') });
+  const einheit = r.einheit && z.einheiten ? z.einheiten[r.einheit] : null;
+  if (einheit && meldbar(r)) weitere.push({ text: einheit.team ? 'Team' : einheit.selbst ? 'Team finden' : 'Team', speichern: () => (folge = 'team') });
   if (r.art === 'wahl' && !['fertig', 'angenommen'].includes(r.status)) weitere.push({ text: r.gewaehlt ? 'abwählen' : 'wählen', speichern: () => (folge = 'wahl') });
   const blatt = r.gewaehlt && meldbar(r) ? planKacheln(r) : null;
   const ok = await L.dialog({
@@ -393,19 +396,15 @@ async function aufgabeOeffnen(r, g) {
             try { z = await api('/empfehlung', { empfehlung_id: e.id, erledigt: !e.erledigt }); ev.currentTarget.closest('dialog').dispatchEvent(new Event('cancel')); zeigen(); }
             catch (f) { L.meldung(f.message, true); }
           } }, e.erledigt ? 'wieder offen' : 'erledigt')))) : null,
-      r.team ? el('div', { class: 'banner team-banner' }, L.symbol('klassen'), r.team.status === 'aktiv'
-        ? ' Ihr bearbeitet ' + r.kuerzel + ' zu zweit: ' + r.team.partner + '. Plan und Fertigmeldung gelten für euch beide, deine Farben und deine Kann-Liste bleiben deine.'
-        : r.team.eingeladen_von_mir ? ' Du hast ' + r.team.partner + ' eingeladen. Die Bestätigung steht noch aus.' : ' ' + r.team.partner + ' hat dich eingeladen.') : null,
+      r.team ? el('div', { class: 'banner team-banner' }, L.symbol('klassen'), ' ' + r.team.name + ': Ihr bearbeitet ' + r.kuerzel + ' gemeinsam' + (r.team.partner ? ' mit ' + r.team.partner : '')
+        + '. Plan und Fertigmeldung gelten für alle, deine Farben und deine Kann-Liste bleiben deine.') : null,
       r.moodle_link ? el('a', { class: 'knopf', style: 'justify-self:start', href: r.moodle_link, target: '_blank', rel: 'noopener' }, L.symbol('extern'), 'Aufgabe in Moodle öffnen') : null,
       r.status === 'angenommen' ? el('p', { class: 'leise klein', text: 'Diese Aufgabe ist angenommen.' }) : null),
     speichern: () => (folge = folge || 'fertig'),
   });
   if (blatt && blatt.geaendert()) zeigen();
   if (!ok) return;
-  if (folge === 'team') teamEinladen({ bereich: 'aufgabe', bezug_id: r.id, titel: r.kuerzel + ' ' + r.titel });
-  else if (folge === 'team_zurueck') {
-    try { await schritt('/team/antwort', { team_id: r.team.id, annehmen: false }); L.meldung('Einladung zurückgezogen.'); } catch (e) { L.meldung(e.message, true); }
-  }
+  if (folge === 'team') teamBlatt(einheit);
   else if (folge === 'fertig') fertigMelden(r);
   else if (folge === 'wahl') wahlFragen(r, gruppe);
   else if (folge === 'zurueck') {
@@ -474,8 +473,8 @@ async function fertigMelden(r) {
   const ok = await L.dialog({
     titel: r.kuerzel + ' ' + r.titel + ' fertig melden', knopf: 'Fertig melden',
     inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
-      r.team && r.team.status === 'aktiv' ? el('div', { class: 'banner team-banner', text: 'Ihr meldet zu zweit: ' + r.team.partner + ' wird mit fertig gemeldet. Die Kann-Liste schätzt jeder selbst ein.' }) : null,
-      r.moodle_link ? el('label', { class: 'haken' }, hochgeladen, r.team && r.team.status === 'aktiv' ? 'Unsere Abgabe ist in Moodle hochgeladen' : 'Meine Abgabe ist in Moodle hochgeladen') : null,
+      r.team ? el('div', { class: 'banner team-banner', text: 'Ihr meldet als Team. ' + (r.team.partner || 'Die anderen') + ' bestätigen danach selbst mit ihrer Kann-Liste; erst dann sieht eure Lehrkraft die Meldung.' }) : null,
+      r.moodle_link ? el('label', { class: 'haken' }, hochgeladen, r.team ? 'Unsere Abgabe ist in Moodle hochgeladen' : 'Meine Abgabe ist in Moodle hochgeladen') : null,
       kann.length ? el('div', { class: 'stapel', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Wie sicher bist du jetzt?' }),
         zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
         kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
@@ -492,32 +491,151 @@ async function fertigMelden(r) {
 
 // --- Zweierteams ---
 
-async function teamEinladen(b) {
-  let liste;
-  try { liste = (await api('/mitschueler')).mitschueler; } catch (e) { L.meldung(e.message, true); return; }
-  const wahl = el('select', { required: true }, el('option', { value: '', text: 'Mitschüler wählen …' }), liste.map(m => el('option', { value: m.id, text: m.name })));
+// --- Lernteams ---
+
+const TEAM_HINWEIS = 'Ihr plant gemeinsam und meldet gemeinsam fertig. Deine Farben, deine Kann-Liste und dein Gelingensnachweis bleiben deine.';
+
+function groesseText(e) {
+  return e.min && e.max ? (e.min === e.max ? e.min + ' Personen' : e.min + ' bis ' + e.max + ' Personen') : '';
+}
+
+function mitgliedChip(m) {
+  return el('span', { class: 'mg' + (m.status === 'eingeladen' ? ' wartet' : '') }, el('i', { class: 'av', text: m.name.split(' ').map(x => x[0]).join('').slice(0, 2) }),
+    m.name + (m.status === 'eingeladen' ? ' · eingeladen' : ''));
+}
+
+// e: Einheit aus z.einheiten (Paket, Wahlgruppe, Aufgabe oder Stammteams)
+async function teamBlatt(e) {
+  if (!e) return;
+  if (e.team) { await teamZeigen(e); return; }
+  if (!e.selbst) {
+    await L.dialog({ titel: 'Team · ' + e.titel, knopf: 'OK', abbrechen: null,
+      inhalt: el('p', { text: 'Für ' + e.titel + ' bildet deine Lehrkraft die Teams. Du siehst dein Team hier, sobald sie es eingetragen hat.' }) });
+    return;
+  }
+  let f;
+  try { f = await api('/team?einheit=' + encodeURIComponent(e.schluessel)); } catch (x) { L.meldung(x.message, true); return; }
+  const name = 'art' + Math.random().toString(36).slice(2);
+  const nurEinladung = el('input', { type: 'radio', name, checked: true }), offen = el('input', { type: 'radio', name });
+  const kaesten = f.frei.map(m => el('label', { class: 'haken klein' }, el('input', { type: 'checkbox', value: m.id }), m.name));
   const ok = await L.dialog({
-    titel: 'Zu zweit bearbeiten', knopf: 'Einladen',
+    titel: 'Team finden · ' + e.titel, knopf: 'Team gründen',
     inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
-      el('p', { text: 'Wen möchtest du für ' + b.titel + ' einladen?' }), L.feld('Partner', wahl),
-      el('p', { class: 'leise klein', text: 'Dein Partner muss bestätigen. Danach plant ihr gemeinsam und einer meldet für euch beide fertig. Deine Farben, deine Kann-Liste und der Gelingensnachweis bleiben deine.' })),
-    speichern: () => {
-      if (!wahl.value) throw new Error('Bitte einen Mitschüler wählen.');
-      return schritt('/team', { bereich: b.bereich, bezug_id: b.bezug_id, partner_id: Number(wahl.value) });
+      el('div', { class: 'banner team-banner', text: (e.modus === 'pflicht' ? 'Ihr arbeitet hier im Team' + (groesseText(e) ? ' (' + groesseText(e) + ')' : '') + '. '
+        + (e.stichtag ? 'Findet euer Team bis ' + L.tag(e.stichtag) + ' ' : '') : 'Ihr dürft hier im Team arbeiten' + (groesseText(e) ? ' (' + groesseText(e) + ')' : '') + '. Allein geht auch. ')
+        + TEAM_HINWEIS }),
+      f.offen.length ? el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Offene Teams zum Beitreten' }),
+        f.offen.map(t => el('div', { class: 'team-k offen-t' }, el('div', { class: 'zeile' }, el('b', { text: t.name }),
+          el('span', { class: 'leise klein', text: (e.max - t.anzahl) + (e.max - t.anzahl === 1 ? ' Platz frei' : ' Plätze frei') }),
+          el('span', { class: 'rechts' }, L.nebenknopf('beitreten', async () => {
+            try { await schritt('/team/beitreten', { team_id: t.id }); L.meldung('Du bist jetzt in ' + t.name + '.'); } catch (x) { L.meldung(x.message, true); }
+          }, 'klein haupt'))),
+          el('div', { class: 'mitglieder' }, t.mitglieder.map(mitgliedChip))))) : null,
+      el('div', { class: 'etikett', text: f.offen.length ? 'Oder ein eigenes Team gründen' : 'Ein eigenes Team gründen' }),
+      el('label', { class: 'haken' }, nurEinladung, 'nur auf Einladung (du lädst ein, jeder bestätigt selbst)'),
+      el('label', { class: 'haken' }, offen, 'offen zum Beitreten (jeder aus der Klasse kann beitreten, bis das Team voll ist)'),
+      el('div', { class: 'etikett', text: 'Einladen' + (e.max ? ' (höchstens ' + (e.max - 1) + ')' : '') }),
+      kaesten.length ? el('div', { class: 'stapel', style: 'gap:4px;max-height:34vh;overflow:auto' }, kaesten) : el('p', { class: 'leise klein', text: 'Alle anderen sind schon in einem Team.' })),
+    speichern: form => {
+      const ids = Array.from(form.querySelectorAll('input[type=checkbox]:checked'), c => Number(c.value));
+      if (e.max && ids.length > e.max - 1) throw new Error('Ein Team hat hier höchstens ' + e.max + ' Personen.');
+      return schritt('/team/gruenden', { bereich: e.bereich, bezug_id: e.bezug_id, offen: offen.checked, einladen: ids });
     },
   });
-  if (ok) L.meldung('Einladung verschickt. Sie gilt, sobald dein Partner bestätigt.');
+  if (ok) L.meldung('Team gegründet. Eingeladene sind dabei, sobald sie annehmen.');
+}
+
+async function teamZeigen(e) {
+  const t = e.team;
+  const selbst = e.selbst && t.quelle === 'schueler';
+  let frei = [];
+  if (selbst) { try { frei = (await api('/team?einheit=' + encodeURIComponent(e.schluessel))).frei; } catch (x) { frei = []; } }
+  const platz = e.max ? e.max - t.mitglieder.length : 0;
+  const kaesten = platz > 0 ? frei.map(m => el('label', { class: 'haken klein' }, el('input', { type: 'checkbox', value: m.id }), m.name)) : [];
+  const ich = t.mitglieder.find(m => m.austritt);
+  const offen = el('input', { type: 'checkbox', checked: t.offen, onchange: async ev => {
+    try { await api('/team/offen', { team_id: t.id, offen: ev.target.checked }); } catch (x) { L.meldung(x.message, true); }
+  } });
+  const ok = await L.dialog({
+    titel: t.name + ' · ' + e.titel, knopf: kaesten.length ? 'Einladen' : null, abbrechen: 'Schließen',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('div', { class: 'mitglieder' }, t.mitglieder.map(mitgliedChip)),
+      el('p', { class: 'leise klein', text: TEAM_HINWEIS }),
+      selbst ? el('label', { class: 'haken' }, offen, 'offen zum Beitreten') : null,
+      kaesten.length ? el('div', { class: 'stapel', style: 'gap:4px' }, el('div', { class: 'etikett', text: 'Weitere einladen (' + platz + (platz === 1 ? ' Platz frei)' : ' Plätze frei)') }),
+        el('div', { class: 'stapel', style: 'gap:4px;max-height:30vh;overflow:auto' }, kaesten)) : null,
+      el('div', { class: 'zeile' },
+        L.nebenknopf('Nachricht ans Team', () => { location.hash = 'rueck'; }, 'klein'),
+        selbst && !ich ? L.nebenknopf('Team verlassen …', () => austrittFragen(t), 'klein warnen') : null),
+      ich ? el('div', { class: 'banner zeile' }, el('span', { text: 'Du hast angefragt, das Team zu verlassen: „' + ich.austritt + '“. Deine Lehrkraft entscheidet.' }),
+        L.nebenknopf('Anfrage zurückziehen', async () => { try { await schritt('/team/austritt', { team_id: t.id, zurueck: true }); } catch (x) { L.meldung(x.message, true); } }, 'klein rechts')) : null,
+      selbst ? null : el('p', { class: 'leise klein', text: 'Dieses Team hat deine Lehrkraft gebildet. Wechseln geht nur über sie.' })),
+    speichern: form => {
+      const ids = Array.from(form.querySelectorAll('input[type=checkbox][value]:checked'), c => Number(c.value));
+      if (!ids.length) throw new Error('Bitte jemanden zum Einladen wählen.');
+      return schritt('/team/einladen', { team_id: t.id, einladen: ids });
+    },
+  });
+  if (ok) L.meldung('Eingeladen.');
+  else zeigen();
+}
+
+async function austrittFragen(t) {
+  const grund = el('textarea', { rows: 2, maxlength: 300, required: true, placeholder: 'Warum möchtest du das Team verlassen?' });
+  const ok = await L.dialog({ titel: t.name + ' verlassen?', knopf: 'Anfrage schicken',
+    inhalt: el('div', { class: 'stapel', style: 'gap:8px' }, el('p', { text: 'Deine Lehrkraft entscheidet. Bis dahin bleibst du im Team. Dein bisheriger Plan bleibt dir.' }), grund),
+    speichern: () => schritt('/team/austritt', { team_id: t.id, grund: grund.value }) });
+  if (ok) L.meldung('Anfrage geschickt.');
 }
 
 async function einladungFragen(t) {
+  const andere = t.mitglieder.filter(m => m.status === 'aktiv').map(m => m.name).join(', ');
   const ok = await L.dialog({
-    titel: t.partner + ' lädt dich ein', knopf: 'Zu zweit bearbeiten', abbrechen: 'Ablehnen',
-    inhalt: el('div', { class: 'stapel', style: 'gap:8px' }, el('p', {}, el('b', { text: t.partner }), ' möchte ' + t.titel + ' mit dir zu zweit bearbeiten.'),
-      el('p', { class: 'leise klein', text: 'Ihr plant gemeinsam (eure Pläne werden zusammengelegt) und einer meldet für euch beide fertig. Deine Farben, deine Kann-Liste und der Gelingensnachweis bleiben deine.' })),
+    titel: 'Einladung ins ' + t.name, knopf: 'Team beitreten', abbrechen: 'Ablehnen',
+    inhalt: el('div', { class: 'stapel', style: 'gap:8px' }, el('p', {}, el('b', { text: andere }), ' möchte' + (andere.includes(',') ? 'n' : '') + ' ' + t.titel + ' mit dir im Team bearbeiten.'),
+      el('div', { class: 'mitglieder' }, t.mitglieder.map(mitgliedChip)),
+      el('p', { class: 'leise klein', text: 'Eure Pläne werden zusammengelegt. ' + TEAM_HINWEIS })),
     speichern: () => schritt('/team/antwort', { team_id: t.id, annehmen: true }),
   });
-  if (ok) L.meldung('Ihr seid jetzt ein Zweierteam.');
+  if (ok) L.meldung('Du bist jetzt in ' + t.name + '.');
   else { try { await schritt('/team/antwort', { team_id: t.id, annehmen: false }); } catch (e) { L.meldung(e.message, true); } }
+}
+
+// Fertigmeldung des Teams bestätigen (mit der eigenen Kann-Liste „nachher“); Rückgabe false bei „Später“
+async function bestaetigenFragen(b) {
+  let r = alleZeilen().find(x => x.id === b.aufgabe_id);
+  if (r && r.kann_liste.some(k => !k.vorher)) {
+    if (!(await kannVorherFragen(r, 'melden'))) return false;
+    r = alleZeilen().find(x => x.id === b.aufgabe_id) || r;
+  }
+  const kann = r ? r.kann_liste : [];
+  const werte = {};
+  kann.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
+  const ok = await L.dialog({
+    titel: b.von + ' hat ' + b.kuerzel + ' fertig gemeldet', knopf: 'Bestätigen', abbrechen: 'Später',
+    weitere: [{ text: 'Noch nicht fertig', speichern: () => 'nicht' }],
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('p', { text: 'Bestätigst du, dass ihr mit ' + b.kuerzel + ' ' + b.titel + ' fertig seid? Erst wenn alle bestätigt haben, sieht eure Lehrkraft die Meldung.' }),
+      el('div', { class: 'mitglieder' }, b.mitglieder.map(m => el('span', { class: 'mg' + (m.bestaetigt ? '' : ' wartet') }, m.ich ? 'du' : m.name, m.bestaetigt ? ' ✓' : ''))),
+      kann.length ? el('div', { class: 'stapel', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Wie sicher bist du jetzt?' }),
+        kann.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+          k.vorher ? el('div', { class: 'leise klein', text: 'Vorher: ' + L.stufeText(k.vorher, zahlen()) }) : null,
+          L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))) : null),
+    speichern: () => {
+      if (kann.some(k => !werte[k.id])) throw new Error('Bitte schätze jede Kann-Aussage ein.');
+      return schritt('/fertig/bestaetigen', { meldung_id: b.meldung_id, kann: werte });
+    },
+  });
+  if (ok === 'nicht') {
+    const text = el('textarea', { rows: 2, maxlength: 400, placeholder: 'Was fehlt noch? (wahlweise)' });
+    const gesendet = await L.dialog({ titel: 'Noch nicht fertig', knopf: 'An das Team schicken',
+      inhalt: el('div', { class: 'stapel', style: 'gap:8px' }, el('p', { text: 'Dein Team bekommt eine Nachricht. Die Meldung wartet weiter, bis alle bestätigen oder sie zurückgezogen wird.' }), text),
+      speichern: () => schritt('/fertig/nochnicht', { meldung_id: b.meldung_id, text: text.value }) });
+    if (gesendet) L.meldung('Nachricht an dein Team geschickt.');
+    return true;
+  }
+  if (ok) L.meldung('Bestätigt.');
+  return !!ok;
 }
 
 // --- Feedbacktermine ---
@@ -533,7 +651,10 @@ async function terminBuchen(n) {
       inhalt: el('p', { text: 'Gerade gibt es keine freien ' + (n ? 'Prüfungszeiten' : 'Sprechzeiten') + '. Schau später noch einmal oder sprich deine Lehrkraft an.' }) });
     return;
   }
+  const meineTeams = Object.values(z.einheiten || {}).filter(e => e.team);
   const anlass = el('select', { required: true }, el('option', { value: '', text: 'Worum geht es?' }),
+    meineTeams.length ? el('optgroup', { label: 'Mit meinem Team' }, meineTeams.map(e => el('option', { value: 'team' + e.team.id,
+      text: e.team.name + ' (' + e.titel + ')' }))) : null,
     z.pakete.map(p => el('optgroup', { label: p.titel },
       p.zeilen.filter(r => r.typ === 'aufgabe' && r.gewaehlt).map(r => el('option', { value: 'a' + r.id, text: r.kuerzel + ' ' + r.titel })),
       el('option', { value: 'p' + p.id, text: 'das ganze Paket' }))),
@@ -563,7 +684,8 @@ async function terminBuchen(n) {
       if (n) return schritt('/termin', Object.assign({ art, anlass: { versuch_id: n.aktuell.id } }, wahl));
       const v = anlass.value;
       if (!v) throw new Error('Bitte den Anlass wählen.');
-      const a = v.startsWith('a') ? { aufgabe_id: Number(v.slice(1)) } : v.startsWith('p') ? { paket_id: Number(v.slice(1)) } : { text: text.value };
+      const a = v.startsWith('team') ? { team_id: Number(v.slice(4)) } : v.startsWith('a') ? { aufgabe_id: Number(v.slice(1)) }
+        : v.startsWith('p') ? { paket_id: Number(v.slice(1)) } : { text: text.value };
       return schritt('/termin', Object.assign({ art: 'feedback', anlass: a }, wahl));
     },
   });
@@ -671,10 +793,28 @@ async function bereitZurueck(n) {
 
 // --- Rückmeldungen ---
 
+function nachrichtenKarte(v) {
+  const text = el('textarea', { rows: 2, maxlength: 2000, placeholder: v.team_id ? 'Antwort an Team und Lehrkraft …' : 'Nachricht an deine Lehrkraft …' });
+  const fluss = el('div', { class: 'nachrichten' }, v.nachrichten.length ? v.nachrichten.map(n => el('div', { class: 'nachricht' + (n.ich ? ' ich' : '') },
+    el('small', { text: (n.ich ? 'du' : n.von) + ' · ' + L.wann(n.zeit) }), el('span', { class: 'nl', text: n.text })))
+    : el('p', { class: 'leise klein', text: v.team_id ? 'Noch keine Nachricht im Team.' : 'Noch keine Nachricht. Hier kannst du deiner Lehrkraft schreiben.' }));
+  setTimeout(() => { fluss.scrollTop = fluss.scrollHeight; }, 0);
+  return el('div', { class: 'karte stapel nachrichten-karte' + (v.ungelesen ? ' neu' : '') },
+    el('div', { class: 'zeile' }, v.team_id ? el('b', { class: 'ik rueck klein-ik' }, L.symbol('klassen')) : el('b', { class: 'ik rueck klein-ik' }, L.symbol('rueck')),
+      el('div', {}, el('b', { text: v.titel }), el('div', { class: 'leise klein', text: v.unter })),
+      v.ungelesen ? el('span', { class: 'chip rot rechts', text: v.ungelesen === 1 ? 'neu' : v.ungelesen + ' neu' }) : null),
+    fluss,
+    el('form', { class: 'zeile', onsubmit: async ev => {
+      ev.preventDefault();
+      if (!text.value.trim()) return;
+      try { await api('/nachrichten', { text: text.value, team_id: v.team_id || undefined }); rueckZeigen(); } catch (x) { L.meldung(x.message, true); }
+    } }, text, el('button', { type: 'submit', class: 'haupt' }, 'Senden')));
+}
+
 async function rueckZeigen() {
   L.setzen(inhalt, el('h1', { class: 'dreieck', text: 'Rückmeldungen' }), el('p', { class: 'leise', text: 'Lade …' }));
-  let d;
-  try { d = await api('/rueckmeldungen'); } catch (e) { L.setzen(inhalt, el('div', { class: 'leer', text: e.message })); return; }
+  let d, nd;
+  try { [d, nd] = await Promise.all([api('/rueckmeldungen'), api('/nachrichten')]); } catch (e) { L.setzen(inhalt, el('div', { class: 'leer', text: e.message })); return; }
   const empZeile = e => el('div', { class: 'emp-zeile' + (e.erledigt ? ' erledigt' : '') },
     el('div', {}, el('span', { class: 'chip ' + (e.verbindlich ? 'lila' : 'lila-hell') + ' klein' }, L.symbol('stern'),
       e.verbindlich ? 'verbindlich' + (e.wirksam ? ' bis ' + L.tag(e.wirksam) : '') : 'freiwillig'), ' ',
@@ -687,6 +827,8 @@ async function rueckZeigen() {
   } }, e.erledigt ? 'wieder offen' : 'erledigt'));
   L.setzen(inhalt,
     el('h1', { class: 'dreieck', text: 'Rückmeldungen' }),
+    el('div', { class: 'stapel' }, el('h2', { text: 'Nachrichten' }), nd.verlaeufe.map(nachrichtenKarte)),
+    el('h2', { text: 'Rückmeldungen' }),
     !d.rueckmeldungen.length && !d.empfehlungen.length ? el('div', { class: 'leer', text: 'Noch keine Rückmeldung. Melde eine Aufgabe fertig oder buche einen Feedbacktermin.' }) : null,
     d.empfehlungen.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Empfohlen für dich' }), d.empfehlungen.map(empZeile)) : null,
     d.rueckmeldungen.map(r => el('div', { class: 'karte stapel rm' + (r.gelesen ? '' : ' neu') },
@@ -697,12 +839,16 @@ async function rueckZeigen() {
           r.ergebnis ? el('span', { class: 'sc ' + (r.ergebnis === 'gelungen' ? 'angenommen' : 'ueberarbeiten'), text: r.ergebnis === 'gelungen' ? 'gelungen' : 'noch nicht gelungen' })
             : r.entscheidung === 'angenommen' ? el('span', { class: 'sc angenommen', text: 'angenommen' })
             : r.entscheidung === 'ueberarbeiten' ? el('span', { class: 'sc ueberarbeiten', text: 'überarbeiten bis ' + L.tag(r.neue_frist) }) : null)),
-      r.text ? el('p', { class: 'rm-text', text: r.text }) : null,
+      r.team_text ? el('div', { class: 'stapel', style: 'gap:4px' }, el('div', { class: 'etikett', text: 'An euer Team' }), el('p', { class: 'rm-text', text: r.team_text })) : null,
+      r.text ? el('div', { class: 'stapel', style: 'gap:4px' }, r.team_text ? el('div', { class: 'etikett', text: 'Nur für dich' }) : null, el('p', { class: 'rm-text', text: r.text })) : null,
       r.kann.length ? el('div', { class: 'stapel', style: 'gap:4px' }, el('div', { class: 'etikett', text: 'Einschätzung deiner Lehrkraft' }),
         r.kann.map(k => el('div', { class: 'kann-vergleich' }, el('span', { text: 'Ich kann ' + k.text }), el('b', { text: L.stufeText(k.stufe, zahlen()) })))) : null,
       r.empfehlungen.length ? el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Empfehlungen' }), r.empfehlungen.map(empZeile)) : null)));
   if (d.ungelesen) {
     try { z = await api('/rueckmeldungen/gelesen', {}); leisteZahlen(); } catch (e) { /* beim nächsten Mal */ }
+  }
+  if (nd.ungelesen) {
+    try { z = await api('/nachrichten/gelesen', {}); leisteZahlen(); } catch (e) { /* beim nächsten Mal */ }
   }
 }
 
@@ -779,7 +925,8 @@ async function kannNachherFragen(r) {
 // Beim Öffnen: fehlende Pflicht-Einschätzungen nachholen (angefangen ohne „vorher“, fertig gemeldet ohne „nachher“)
 const kannGefragt = new Set();
 async function kannPflichtFragen() {
-  const offen = alleZeilen().filter(r => r.gewaehlt && !kannGefragt.has(r.id) && r.kann_liste && r.kann_liste.length &&
+  const warten = new Set((z.bestaetigen || []).map(b => b.aufgabe_id));
+  const offen = alleZeilen().filter(r => r.gewaehlt && !kannGefragt.has(r.id) && !warten.has(r.id) && r.kann_liste && r.kann_liste.length &&
     (r.kann_stand === 'nachher' || (r.kann_stand === 'vorher' && (r.plan.length || Object.keys(r.ist).length))));
   for (const r of offen) {
     kannGefragt.add(r.id);
@@ -790,7 +937,8 @@ async function kannPflichtFragen() {
 }
 
 async function nachfragen() {
-  if (z.einladungen && z.einladungen.length) { await einladungFragen(z.einladungen[0]); return; }
+  for (const t of (z.einladungen || []).slice()) await einladungFragen(t);
+  for (const b of (z.bestaetigen || []).slice()) { if (!(await bestaetigenFragen(b))) break; }
   if (z.hinweise.ausfall.length) {
     const h = z.hinweise.ausfall;
     await L.dialog({

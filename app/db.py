@@ -448,6 +448,80 @@ MIGRATIONEN = [
     ALTER TABLE klasse ADD COLUMN archiviert_am TEXT;
     UPDATE klasse SET archiviert_am = strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime') WHERE archiviert = 1
     """,
+    # 11: Lernteams (statt Zweierteams). Team-Modus je Paket, Wahlgruppe oder Aufgabe (NULL = wie uebergeordnet, beim
+    # Paket = einzeln): einzeln | frei | pflicht | vorgabe | stamm, dazu Groesse und Stichtag. Ein Lernteam gehoert zu der
+    # Ebene, an der der Modus steht (bereich paket | gruppe | aufgabe) oder ist ein Stammteam der Klasse (bereich stamm).
+    # Mitglieder einzeln mit Status; Fertigmeldung im Team mit Bestaetigung je Person; Rueckmeldung mit Teil fuer das
+    # ganze Team; Teamtermin; Nachrichten mit dem Team oder einem Schueler. Die alten Zweierteams werden uebernommen.
+    """
+    ALTER TABLE paket ADD COLUMN team_modus TEXT;
+    ALTER TABLE paket ADD COLUMN team_min INTEGER;
+    ALTER TABLE paket ADD COLUMN team_max INTEGER;
+    ALTER TABLE paket ADD COLUMN team_stichtag TEXT;
+    ALTER TABLE wahlgruppe ADD COLUMN team_modus TEXT;
+    ALTER TABLE wahlgruppe ADD COLUMN team_min INTEGER;
+    ALTER TABLE wahlgruppe ADD COLUMN team_max INTEGER;
+    ALTER TABLE wahlgruppe ADD COLUMN team_stichtag TEXT;
+    ALTER TABLE aufgabe ADD COLUMN team_modus TEXT;
+    ALTER TABLE aufgabe ADD COLUMN team_min INTEGER;
+    ALTER TABLE aufgabe ADD COLUMN team_max INTEGER;
+    ALTER TABLE aufgabe ADD COLUMN team_stichtag TEXT;
+    UPDATE paket SET team_modus = 'frei', team_min = 2, team_max = 2 WHERE team = 1;
+    UPDATE aufgabe SET team_modus = 'frei', team_min = 2, team_max = 2 WHERE team = 1 AND art != 'zusatz'
+        AND paket_id NOT IN (SELECT id FROM paket WHERE team = 1);
+    CREATE TABLE lernteam (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        bereich TEXT NOT NULL CHECK (bereich IN ('paket', 'gruppe', 'aufgabe', 'stamm')),
+        bezug_id INTEGER NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        offen INTEGER NOT NULL DEFAULT 0,
+        quelle TEXT NOT NULL DEFAULT 'schueler' CHECK (quelle IN ('schueler', 'lehrkraft')),
+        status TEXT NOT NULL DEFAULT 'aktiv' CHECK (status IN ('aktiv', 'aufgeloest')),
+        erstellt TEXT NOT NULL,
+        ende TEXT,
+        ende_von TEXT);
+    CREATE INDEX lernteam_bezug ON lernteam (bereich, bezug_id, status);
+    CREATE TABLE lernteam_mitglied (
+        team_id INTEGER NOT NULL REFERENCES lernteam(id) ON DELETE CASCADE,
+        schueler_id INTEGER NOT NULL REFERENCES schueler(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('eingeladen', 'aktiv', 'raus')),
+        eingeladen_von INTEGER,
+        seit TEXT NOT NULL,
+        ende TEXT,
+        ende_grund TEXT,
+        austritt_grund TEXT,
+        austritt_zeit TEXT,
+        PRIMARY KEY (team_id, schueler_id));
+    CREATE INDEX lernteam_mitglied_schueler ON lernteam_mitglied (schueler_id, status);
+    INSERT INTO lernteam (id, klasse_id, bereich, bezug_id, quelle, status, erstellt, ende, ende_von)
+        SELECT id, klasse_id, bereich, bezug_id, CASE WHEN bestaetigt = erstellt THEN 'lehrkraft' ELSE 'schueler' END,
+               CASE status WHEN 'aufgeloest' THEN 'aufgeloest' ELSE 'aktiv' END, erstellt, ende, ende_von FROM team;
+    INSERT INTO lernteam_mitglied (team_id, schueler_id, status, seit, ende)
+        SELECT id, a_id, CASE status WHEN 'aufgeloest' THEN 'raus' ELSE 'aktiv' END, erstellt, ende FROM team;
+    INSERT INTO lernteam_mitglied (team_id, schueler_id, status, eingeladen_von, seit, ende)
+        SELECT id, b_id, CASE status WHEN 'aufgeloest' THEN 'raus' ELSE status END, a_id, COALESCE(bestaetigt, erstellt), ende FROM team;
+    ALTER TABLE meldung ADD COLUMN bestaetigt TEXT;
+    UPDATE meldung SET bestaetigt = zeit;
+    ALTER TABLE rueckmeldung ADD COLUMN team_text TEXT NOT NULL DEFAULT '';
+    ALTER TABLE termin ADD COLUMN team_id INTEGER;
+    CREATE TABLE nachricht (
+        id INTEGER PRIMARY KEY,
+        klasse_id INTEGER NOT NULL REFERENCES klasse(id) ON DELETE CASCADE,
+        team_id INTEGER REFERENCES lernteam(id) ON DELETE CASCADE,
+        schueler_id INTEGER REFERENCES schueler(id) ON DELETE CASCADE,
+        von_lehrkraft INTEGER REFERENCES lehrkraft(id),
+        von_schueler INTEGER REFERENCES schueler(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        zeit TEXT NOT NULL);
+    CREATE INDEX nachricht_team ON nachricht (team_id, id);
+    CREATE INDEX nachricht_schueler ON nachricht (schueler_id, id);
+    CREATE TABLE gelesen (
+        verlauf TEXT NOT NULL,
+        leser TEXT NOT NULL,
+        zeit TEXT NOT NULL,
+        PRIMARY KEY (verlauf, leser))
+    """,
 ]
 
 

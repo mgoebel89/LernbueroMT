@@ -18,6 +18,10 @@ Gespraechstermin: Aus "Zu pruefen" traegt die Lehrkraft dem Schueler einen Termi
 ("Gespraech noetig", mit Hinweis). Das ist ein Pflichttermin: absagen oder verlegen koennen nur Lehrkraefte; er zaehlt
 nicht als der eine offene Feedbacktermin des Schuelers.
 
+Teamtermin (Stufe G): Ein Mitglied eines Lernteams bucht in einer Sprechzeit fuer das ganze Team (je Mitglied eine
+Terminzeile mit team_id); er zaehlt als der eine offene Feedbacktermin jedes Mitglieds, absagen kann jedes Mitglied bis
+zum Vortag (fuer alle). Die Lehrkraft kann einen Teamtermin aus ihrer Sprechzeit eintragen (Pflichttermin).
+
 Dienstkalender (Stufe F): Ein Termin mit Uhrzeit im Dienstkalender der Lehrkraft sperrt die Plaetze ihrer Zeitfenster,
 mit denen er sich ueberschneidet (grau, nicht buchbar). Schon gebuchte Termine bleiben und werden als Ueberschneidung
 gezeigt. Beim Anlegen eines Zeitfensters warnt das Tool vor Ueberschneidungen.
@@ -26,7 +30,7 @@ import datetime
 import json
 import re
 
-from . import db, kalender, klassen, unterrichtstage as ut
+from . import db, kalender, klassen, teams, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 ARTEN = {"sprech": "Sprechzeit", "pruefung": "Prüfungszeit"}
@@ -369,8 +373,19 @@ def termine_heute(con, konto, heute=None):
         aus.append({"id": t["id"], "beginn": t["beginn"], "ende": t["ende"], "art": t["art"], "schueler_id": t["schueler_id"],
                     "name": "%s %s" % (t["vorname"], t["nachname"]), "klasse_id": t["klasse_id"], "klasse": t["klasse"],
                     "anlass": _anlass_text(con, t), "anlass_aufgabe_id": t["anlass_aufgabe_id"], "nachweis_id": t["nachweis_id"],
-                    "rueckmeldung": bool(con.execute("SELECT 1 FROM rueckmeldung WHERE termin_id = ? AND freigegeben IS NOT NULL", (t["id"],)).fetchone())})
-    return aus
+                    "rueckmeldung": bool(con.execute("SELECT 1 FROM rueckmeldung WHERE termin_id = ? AND freigegeben IS NOT NULL", (t["id"],)).fetchone()),
+                    "team_id": t["team_id"]})
+    zusammen, ergebnis = {}, []   # Teamtermin: eine Zeile fuer das ganze Team
+    for e in aus:
+        k = (e["team_id"], e["beginn"]) if e["team_id"] else None
+        if k and k in zusammen:
+            zusammen[k]["name"] += ", " + e["name"].split(" ")[0]
+            continue
+        if k:
+            zusammen[k] = e
+            e["name"] = e["name"].split(" ")[0]
+        ergebnis.append(e)
+    return ergebnis
 
 
 def absagen_lehrkraft(con, konto, termin_id):
@@ -378,9 +393,10 @@ def absagen_lehrkraft(con, konto, termin_id):
     if t is None or t["abgesagt"]:
         raise TerminFehler("Diesen Termin gibt es nicht (mehr).")
     klassen.pruefen(con, t["klasse_id"], konto, "aendern")
-    con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = ? WHERE id = ?", (db.jetzt(), "lehrkraft:" + konto["kuerzel"], termin_id))
-    _versuche_loesen(con, [termin_id])
-    db.ereignis(con, t["klasse_id"], t["schueler_id"], "lehrkraft", konto["kuerzel"], "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
+    for x in _gleiche_termine(con, t):
+        con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = ? WHERE id = ?", (db.jetzt(), "lehrkraft:" + konto["kuerzel"], x["id"]))
+        _versuche_loesen(con, [x["id"]])
+        db.ereignis(con, t["klasse_id"], x["schueler_id"], "lehrkraft", konto["kuerzel"], "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
 
 
 # --- Schueler: buchen und absagen ---
@@ -456,15 +472,32 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
     platz = next(((b, e) for b, e in plaetze(z) if b == beginn), None)
     if platz is None:
         raise TerminFehler("Diesen Platz gibt es nicht.")
-    if art == "feedback" and con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND pflicht = 0 AND abgesagt IS NULL AND (datum > ? OR "
-                                         "(datum = ? AND ende > ?))", (schueler["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
-        raise TerminFehler("Du hast schon einen offenen Feedbacktermin. Sage ihn ab, wenn du einen anderen willst.")
+    personen = [schueler]
+    team = None
+    if art == "feedback" and anlass.get("team_id"):
+        try:
+            team = con.execute("SELECT t.* FROM lernteam t JOIN lernteam_mitglied m ON m.team_id = t.id WHERE t.id = ? AND t.status = 'aktiv' "
+                               "AND m.schueler_id = ? AND m.status = 'aktiv'", (int(anlass["team_id"]), schueler["id"])).fetchone()
+        except (TypeError, ValueError):
+            team = None
+        if team is None:
+            raise TerminFehler("In diesem Team bist du nicht.")
+        personen = [con.execute("SELECT * FROM schueler WHERE id = ?", (m["schueler_id"],)).fetchone() for m in teams.mitglieder(con, team["id"])]
+        personen = [p for p in personen if p["aktiv"]]
+    for p in personen if art == "feedback" else []:
+        if con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND pflicht = 0 AND abgesagt IS NULL AND (datum > ? OR "
+                       "(datum = ? AND ende > ?))", (p["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
+            raise TerminFehler("Du hast schon einen offenen Feedbacktermin. Sage ihn ab, wenn du einen anderen willst." if p["id"] == schueler["id"]
+                               else "%s hat schon einen offenen Feedbacktermin." % p["vorname"])
     if beginn in _gebucht(con, z["id"], d.isoformat()) or kalender.kollision(platz[0], platz[1], kalender.dienst_belegt(con, z["lehrkraft_id"], d)):
         raise TerminFehler("Dieser Platz ist gerade vergeben worden. Bitte einen anderen wählen.")
     aufgabe_id = paket_id = None
     text = re.sub(r"\s+", " ", str(anlass.get("text") or "")).strip()[:200]
     if versuch:
         paket_id, text = versuch["paket_id"], ""
+    elif team is not None:
+        td = teams.team_daten(con, team)
+        text = "Team: %s (%s)" % (", ".join(m["vorname"] for m in td["mitglieder"] if m["status"] == "aktiv"), td["titel"])
     elif anlass.get("aufgabe_id"):
         a = con.execute("SELECT a.id, a.paket_id, p.klasse_id FROM aufgabe a JOIN paket p ON p.id = a.paket_id WHERE a.id = ?",
                         (int(anlass["aufgabe_id"]),)).fetchone()
@@ -478,14 +511,77 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
         paket_id = p["id"]
     elif not text:
         raise TerminFehler("Bitte den Anlass angeben: eine Aufgabe, ein Paket oder kurz, worum es geht.")
-    tid = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
-                      "anlass_text, nachweis_id, gebucht) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      (z["id"], schueler["id"], d.isoformat(), platz[0], platz[1], art, aufgabe_id, paket_id, text,
-                       versuch["nachweis_id"] if versuch else None, db.jetzt())).lastrowid
+    tid = None
+    for p in personen:
+        neu = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
+                          "anlass_text, nachweis_id, gebucht, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          (z["id"], p["id"], d.isoformat(), platz[0], platz[1], art, aufgabe_id, paket_id, text,
+                           versuch["nachweis_id"] if versuch else None, db.jetzt(), team["id"] if team else None)).lastrowid
+        tid = tid or neu
+        db.ereignis(con, schueler["klasse_id"], p["id"], "schueler", "Schüler", "termin_gebucht", datum=d.isoformat(), beginn=platz[0],
+                    terminart=art, aufgabe_id=aufgabe_id, team=bool(team))
     if versuch:
         con.execute("UPDATE versuch SET termin_id = ? WHERE id = ?", (tid, versuch["id"]))
-    db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", "termin_gebucht", datum=d.isoformat(), beginn=platz[0],
-                terminart=art, aufgabe_id=aufgabe_id)
+    return tid
+
+
+def _gleiche_termine(con, t):
+    """Ein Teamtermin besteht aus einer Zeile je Mitglied: alle Zeilen desselben Teams zur selben Zeit."""
+    if not t["team_id"]:
+        return [t]
+    return con.execute("SELECT * FROM termin WHERE team_id = ? AND zeitfenster_id = ? AND datum = ? AND beginn = ? AND abgesagt IS NULL",
+                       (t["team_id"], t["zeitfenster_id"], t["datum"], t["beginn"])).fetchall()
+
+
+def teamtermin_plaetze(con, konto, team_id, heute=None, jetzt_hhmm=None):
+    t = con.execute("SELECT * FROM lernteam WHERE id = ? AND status = 'aktiv'", (team_id,)).fetchone()
+    if t is None:
+        raise TerminFehler("Dieses Team gibt es nicht (mehr).")
+    klassen.pruefen(con, t["klasse_id"], konto, "aendern")
+    m = teams.mitglieder(con, team_id)
+    if not m:
+        raise TerminFehler("Das Team hat keine Mitglieder.")
+    s = con.execute("SELECT * FROM schueler WHERE id = ?", (m[0]["schueler_id"],)).fetchone()
+    return freie_plaetze(con, s, "feedback", heute, jetzt_hhmm, lehrkraft_id=konto["id"])
+
+
+def teamtermin_eintragen(con, konto, team_id, zeitfenster_id, datum, beginn, hinweis="", heute=None, jetzt_hhmm=None):
+    """Die Lehrkraft traegt dem ganzen Team einen Termin aus ihrer Sprechzeit ein (Pflichttermin)."""
+    heute = heute or db.heute()
+    jetzt_hhmm = jetzt_hhmm or _jetzt_hhmm()
+    t = con.execute("SELECT * FROM lernteam WHERE id = ? AND status = 'aktiv'", (team_id,)).fetchone()
+    if t is None:
+        raise TerminFehler("Dieses Team gibt es nicht (mehr).")
+    klassen.pruefen(con, t["klasse_id"], konto, "aendern")
+    z = con.execute("SELECT * FROM zeitfenster WHERE id = ? AND aktiv = 1", (zeitfenster_id,)).fetchone()
+    if z is None or z["klasse_id"] != t["klasse_id"] or z["art"] != "sprech" or z["lehrkraft_id"] != konto["id"]:
+        raise TerminFehler("Bitte einen Platz aus Ihrer Sprechzeit in dieser Klasse wählen.")
+    try:
+        d = ut.datum(datum)
+    except ut.TageFehler:
+        raise TerminFehler("Ungültiger Tag.")
+    if d < heute or (d == heute and str(beginn) <= jetzt_hhmm):
+        raise TerminFehler("Dieser Platz liegt in der Vergangenheit.")
+    if d not in [x for x, tag in fenstertage(con, z, d, d) if tag and tag["status"] == "unterricht"]:
+        raise TerminFehler("An diesem Tag gibt es keine Sprechzeit.")
+    platz = next(((b, e) for b, e in plaetze(z) if b == beginn), None)
+    if platz is None:
+        raise TerminFehler("Diesen Platz gibt es nicht.")
+    if beginn in _gebucht(con, z["id"], d.isoformat()):
+        raise TerminFehler("Dieser Platz ist schon vergeben.")
+    dienst = kalender.kollision(platz[0], platz[1], kalender.dienst_belegt(con, konto["id"], d))
+    if dienst:
+        raise TerminFehler("Zu dieser Zeit steht in Ihrem Dienstkalender: %s." % dienst)
+    daten = teams.team_daten(con, t)
+    text = "Team: %s (%s)" % (", ".join(m["vorname"] for m in daten["mitglieder"] if m["status"] == "aktiv"), daten["titel"])
+    hinweis = re.sub(r"\s+", " ", str(hinweis or "")).strip()[:200]
+    tid = None
+    for m in teams.mitglieder(con, team_id):
+        neu = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_text, gebucht, pflicht, hinweis, team_id) "
+                          "VALUES (?, ?, ?, ?, ?, 'feedback', ?, ?, 1, ?, ?)",
+                          (z["id"], m["schueler_id"], d.isoformat(), platz[0], platz[1], text, db.jetzt(), hinweis, team_id)).lastrowid
+        tid = tid or neu
+        db.ereignis(con, t["klasse_id"], m["schueler_id"], "lehrkraft", konto["kuerzel"], "teamtermin", datum=d.isoformat(), beginn=platz[0])
     return tid
 
 
@@ -498,9 +594,10 @@ def absagen_schueler(con, schueler, termin_id, heute=None):
         raise TerminFehler("Diesen Termin hat deine Lehrkraft eingetragen. Absagen oder verlegen geht nur über sie.")
     if t["datum"] <= heute.isoformat():
         raise TerminFehler("Absagen geht nur bis zum Vortag. Bitte sprich deine Lehrkraft an.")
-    con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = 'schueler' WHERE id = ?", (db.jetzt(), termin_id))
-    _versuche_loesen(con, [termin_id])
-    db.ereignis(con, schueler["klasse_id"], schueler["id"], "schueler", "Schüler", "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
+    for x in _gleiche_termine(con, t):   # Teamtermin: gilt fuer alle
+        con.execute("UPDATE termin SET abgesagt = ?, abgesagt_von = 'schueler' WHERE id = ?", (db.jetzt(), x["id"]))
+        _versuche_loesen(con, [x["id"]])
+        db.ereignis(con, schueler["klasse_id"], x["schueler_id"], "schueler", "Schüler", "termin_abgesagt", datum=t["datum"], beginn=t["beginn"])
 
 
 # --- Gespraechstermin aus "Zu pruefen" ---

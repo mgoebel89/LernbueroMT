@@ -12,7 +12,7 @@ Entfernen deaktiviert nur (aktiv = 0), damit spaeter Plaene und Verlauf der Schu
 """
 import re
 
-from . import db, klassen, unterrichtstage
+from . import db, klassen, teams, unterrichtstage
 
 ARTEN = ("pflicht", "wahl", "zusatz")
 ZUSATZ_ARTEN = ("vertiefung", "wiederholung")
@@ -115,8 +115,8 @@ def aendern(con, konto, pid, d):
         felder["freigabe"] = _datum(d["freigabe"])
     if "archiviert" in d:
         felder["archiviert"] = 1 if d["archiviert"] else 0
-    if "team" in d:   # das ganze Paket zu zweit (ein Partner fuer alle Aufgaben ausser Zusatzaufgaben)
-        felder["team"] = 1 if d["team"] else 0
+    if "team_modus" in d:   # Lernteams fuer das ganze Paket (Aufgaben und Wahlgruppen koennen abweichen)
+        felder.update(teams.einstellung_pruefen(d, "paket"))
     for spalte, wert in felder.items():
         con.execute("UPDATE paket SET %s = ? WHERE id = ?" % spalte, (wert, pid))
     if felder:
@@ -230,12 +230,13 @@ def aufgabe_anlegen(con, konto, pid, d):
         pos = (con.execute("SELECT MAX(pos) FROM aufgabe WHERE paket_id = ? AND art = 'zusatz'", (pid,)).fetchone()[0] or 0) + 1
     if d.get("kuerzel"):
         kuerzel = _text(d["kuerzel"], "Kürzel", 1, 6)
+    t = teams.einstellung_pruefen(d, "aufgabe") if art != "zusatz" else teams.einstellung_pruefen({}, "aufgabe")
     cur = con.execute(
-        "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, frist, moodle_link, voraussetzung_id, pos, erstellt, team) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, frist, moodle_link, voraussetzung_id, pos, erstellt, "
+        "team_modus, team_min, team_max, team_stichtag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (pid, kuerzel, _text(d.get("titel"), "Titel der Aufgabe", 2, 120), art, gid, zusatz_art,
          None if art == "zusatz" else _datum(d.get("frist")), _link(d.get("moodle_link")),
-         _voraussetzung(con, pid, d.get("voraussetzung_id")), pos, db.jetzt(), 1 if d.get("team") and art != "zusatz" else 0))
+         _voraussetzung(con, pid, d.get("voraussetzung_id")), pos, db.jetzt(), t["team_modus"], t["team_min"], t["team_max"], t["team_stichtag"]))
     _log(con, p, konto, "aufgabe_angelegt", kuerzel=kuerzel, titel=d.get("titel"), aufgabenart=art)
     return cur.lastrowid
 
@@ -262,8 +263,8 @@ def aufgabe_aendern(con, konto, pid, aid, d):
         felder["moodle_link"] = _link(d["moodle_link"])
     if "voraussetzung_id" in d:
         felder["voraussetzung_id"] = _voraussetzung(con, pid, d["voraussetzung_id"], selbst=aid)
-    if "team" in d and a["art"] != "zusatz":
-        felder["team"] = 1 if d["team"] else 0
+    if "team_modus" in d and a["art"] != "zusatz":
+        felder.update(teams.einstellung_pruefen(d, "aufgabe"))
     if "zusatz_art" in d and a["art"] == "zusatz":
         if d["zusatz_art"] not in ZUSATZ_ARTEN:
             raise PaketFehler("Zusatzaufgabe: Vertiefung oder Wiederholung.")
@@ -281,9 +282,11 @@ def gruppe_anlegen(con, konto, pid, d):
     belegt = {z[0] for z in con.execute("SELECT buchstabe FROM wahlgruppe WHERE paket_id = ?", (pid,))}
     buchstabe = next(b for b in "ABCDEFGHJKLMNQRSTUVWXY" if b not in belegt)
     waehlen = _waehlen(d.get("waehlen", 1))
-    cur = con.execute("INSERT INTO wahlgruppe (paket_id, buchstabe, titel, waehlen, frist, pos) VALUES (?, ?, ?, ?, ?, ?)",
+    t = teams.einstellung_pruefen(d, "gruppe")
+    cur = con.execute("INSERT INTO wahlgruppe (paket_id, buchstabe, titel, waehlen, frist, pos, team_modus, team_min, team_max, team_stichtag) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                       (pid, buchstabe, _text(d.get("titel"), "Titel der Wahlgruppe", 0, 80), waehlen, _datum(d.get("frist")),
-                       _naechste_pos_oben(con, pid)))
+                       _naechste_pos_oben(con, pid), t["team_modus"], t["team_min"], t["team_max"], t["team_stichtag"]))
     _log(con, p, konto, "wahlgruppe_angelegt", buchstabe=buchstabe)
     return cur.lastrowid
 
@@ -315,6 +318,9 @@ def gruppe_aendern(con, konto, pid, gid, d):
         con.execute("UPDATE wahlgruppe SET waehlen = ? WHERE id = ?", (_waehlen(d["waehlen"]), gid))
     if "frist" in d:
         con.execute("UPDATE wahlgruppe SET frist = ? WHERE id = ?", (_datum(d["frist"]), gid))
+    if "team_modus" in d:
+        for spalte, wert in teams.einstellung_pruefen(d, "gruppe").items():
+            con.execute("UPDATE wahlgruppe SET %s = ? WHERE id = ?" % spalte, (wert, gid))
     _log(con, p, konto, "wahlgruppe_geaendert", buchstabe=g["buchstabe"])
 
 
@@ -457,7 +463,8 @@ def struktur(con, p, rolle=None):
         frist = _frist(con, kid, a["frist"], ("gruppe", g["frist"] if g else None), ("paket", p["frist"])) if a["art"] != "zusatz" \
             else {"frist": None, "wirksam": None, "hinweis": "", "quelle": None}
         return {"id": a["id"], "kuerzel": a["kuerzel"], "titel": a["titel"], "art": a["art"], "wahlgruppe_id": a["wahlgruppe_id"],
-                "team": bool(a["team"]) or (bool(p["team"]) and a["art"] != "zusatz"), "team_eigen": bool(a["team"]),
+                "team": teams.konfig(a) if a["art"] != "zusatz" else None,
+                "team_wirksam": teams.MODUS_TEXT[teams._einheit(a, gruppen.get(a["wahlgruppe_id"]), p, kid)["modus"]],
                 "zusatz_art": a["zusatz_art"], "moodle_link": a["moodle_link"], "voraussetzung_id": a["voraussetzung_id"],
                 "voraussetzung": kuerzel.get(a["voraussetzung_id"]),
                 "kann": sorted(k for k, ids in kann_links.items() if a["id"] in ids), **frist, "eigene_frist": a["frist"]}
@@ -468,7 +475,7 @@ def struktur(con, p, rolle=None):
             ablauf.append(dict(aufgabe(next(a for a in aufgaben if a["id"] == eid)), typ="aufgabe"))
         else:
             g = gruppen[eid]
-            ablauf.append({"typ": "gruppe", "id": g["id"], "buchstabe": g["buchstabe"], "titel": g["titel"], "waehlen": g["waehlen"],
+            ablauf.append({"typ": "gruppe", "id": g["id"], "buchstabe": g["buchstabe"], "titel": g["titel"], "waehlen": g["waehlen"], "team": teams.konfig(g),
                            **_frist(con, kid, g["frist"], ("paket", p["frist"])), "eigene_frist": g["frist"],
                            "aufgaben": [aufgabe(a) for a in aufgaben if a["wahlgruppe_id"] == g["id"]]})
     zusatz = [aufgabe(a) for a in aufgaben if a["art"] == "zusatz"]
@@ -487,7 +494,7 @@ def struktur(con, p, rolle=None):
         w, h = unterrichtstage.wirksame_frist(con, kid, p["freigabe"])
         freigabe = {"datum": p["freigabe"], "wirksam": w, "hinweis": h}
     return {"id": p["id"], "titel": p["titel"], "lernfeld": p["lernfeld"], "klasse_id": kid, "klasse": klasse["name"] if klasse else None,
-            "vorlage": kid is None, "rolle": rolle, "darf_aendern": rolle == "team", "archiviert": bool(p["archiviert"]), "team": bool(p["team"]),
+            "vorlage": kid is None, "rolle": rolle, "darf_aendern": rolle == "team", "archiviert": bool(p["archiviert"]), "team": teams.konfig(p),
             "freigabe": freigabe, "frist": _frist(con, kid, p["frist"]), "ablauf": ablauf, "zusatz": zusatz, "kann": kann,
             "nachweise": nachweise}
 
@@ -499,20 +506,23 @@ def kopieren(con, konto, pid, ziel_klasse_id=None, titel=None):
     p, _ = pruefen(con, pid, konto)
     if ziel_klasse_id is not None:
         klassen.pruefen(con, ziel_klasse_id, konto, "aendern")
-    neu = con.execute("INSERT INTO paket (klasse_id, besitzer_id, titel, lernfeld, aus_paket_id, erstellt, team) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (ziel_klasse_id, konto["id"], _text(titel or p["titel"], "Titel", 2, 80), p["lernfeld"], pid, db.jetzt(), p["team"])).lastrowid
+    neu = con.execute("INSERT INTO paket (klasse_id, besitzer_id, titel, lernfeld, aus_paket_id, erstellt, team_modus, team_min, team_max) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (ziel_klasse_id, konto["id"], _text(titel or p["titel"], "Titel", 2, 80), p["lernfeld"], pid, db.jetzt(),
+                       p["team_modus"], p["team_min"], p["team_max"])).lastrowid
     gruppen = {}
     for g in con.execute("SELECT * FROM wahlgruppe WHERE paket_id = ? AND aktiv = 1", (pid,)).fetchall():
-        gruppen[g["id"]] = con.execute("INSERT INTO wahlgruppe (paket_id, buchstabe, titel, waehlen, pos) VALUES (?, ?, ?, ?, ?)",
-                                       (neu, g["buchstabe"], g["titel"], g["waehlen"], g["pos"])).lastrowid
+        gruppen[g["id"]] = con.execute("INSERT INTO wahlgruppe (paket_id, buchstabe, titel, waehlen, pos, team_modus, team_min, team_max) "
+                                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                       (neu, g["buchstabe"], g["titel"], g["waehlen"], g["pos"], g["team_modus"], g["team_min"], g["team_max"])).lastrowid
     aufgaben = {}
     alte = con.execute("SELECT * FROM aufgabe WHERE paket_id = ? AND aktiv = 1", (pid,)).fetchall()
     for a in alte:
         aufgaben[a["id"]] = con.execute(
-            "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, moodle_link, pos, erstellt, team) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO aufgabe (paket_id, kuerzel, titel, art, wahlgruppe_id, zusatz_art, moodle_link, pos, erstellt, team_modus, team_min, team_max) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (neu, a["kuerzel"], a["titel"], a["art"], gruppen.get(a["wahlgruppe_id"]), a["zusatz_art"], a["moodle_link"], a["pos"],
-             db.jetzt(), a["team"])).lastrowid
+             db.jetzt(), a["team_modus"], a["team_min"], a["team_max"])).lastrowid
     for a in alte:
         if a["voraussetzung_id"] in aufgaben:
             con.execute("UPDATE aufgabe SET voraussetzung_id = ? WHERE id = ?", (aufgaben[a["voraussetzung_id"]], aufgaben[a["id"]]))

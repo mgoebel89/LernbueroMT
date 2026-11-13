@@ -59,6 +59,38 @@ const Pakete = (() => {
     zeichnen(p);
   }
 
+  // Lernteams: Modus je Paket, Wahlgruppe oder Aufgabe (leer = wie übergeordnet, beim Paket = einzeln)
+  const MODI = { einzeln: 'einzeln', frei: 'Team frei', pflicht: 'Team Pflicht', vorgabe: 'vorgegebene Teams', stamm: 'Stammteams' };
+  const MODUS_HILFE = { frei: 'Schüler dürfen sich zusammentun, müssen aber nicht.', pflicht: 'Schüler finden sich bis zum Stichtag; wer dann allein ist, teilen Sie zu.',
+    vorgabe: 'Sie setzen die Teams in der Teamübersicht.', stamm: 'Es gelten die Stammteams der Klasse.', einzeln: 'Jeder arbeitet allein.' };
+  function teamChip(t) {
+    if (!t) return null;
+    const groesse = t.min && t.max ? (t.min === t.max ? ' · ' + t.min : ' · ' + t.min + '–' + t.max) : '';
+    return el('span', { class: 'chip lila klein', title: MODUS_HILFE[t.modus] || '' }, L.symbol('klassen'), (MODI[t.modus] || t.modus) + groesse);
+  }
+  function teamFelder(t, ebene) {
+    const modus = el('select', {}, el('option', { value: '', text: ebene === 'paket' ? 'einzeln (Vorgabe)' : 'wie ' + (ebene === 'aufgabe' ? 'Gruppe/Paket' : 'Paket') }),
+      Object.entries(MODI).filter(([w]) => ebene !== 'paket' || w !== 'einzeln').map(([w, txt]) => el('option', { value: w, text: txt })));
+    modus.value = t ? t.modus : '';
+    const min = el('input', { type: 'number', min: 1, max: 8, value: t && t.min ? t.min : 2, style: 'max-width:90px' });
+    const max = el('input', { type: 'number', min: 1, max: 8, value: t && t.max ? t.max : 3, style: 'max-width:90px' });
+    const stichtag = el('input', { type: 'date', value: t && t.stichtag ? t.stichtag : '' });
+    const hilfe = el('p', { class: 'leise klein' });
+    const groesse = el('div', { class: 'felder zwei' }, L.feld('Teamgröße von', min), L.feld('bis', max));
+    const stichFeld = L.feld('Stichtag fürs Finden', stichtag, 'leer = eine Woche nach der Freigabe');
+    const sichtbar = () => {
+      const m = modus.value;
+      groesse.hidden = !['frei', 'pflicht', 'vorgabe'].includes(m);
+      stichFeld.hidden = m !== 'pflicht';
+      hilfe.textContent = MODUS_HILFE[m] || (ebene === 'paket' ? 'Jeder arbeitet allein, außer bei Aufgaben oder Wahlgruppen mit eigenem Modus.' : 'Es gilt die Einstellung darüber.');
+    };
+    modus.addEventListener('change', sichtbar); sichtbar();
+    return {
+      block: el('div', { class: 'stapel team-felder', style: 'gap:6px' }, L.feld('Lernteams', modus), hilfe, groesse, stichFeld),
+      lesen: () => ({ team_modus: modus.value || null, team_min: Number(min.value), team_max: Number(max.value), team_stichtag: stichtag.value || null }),
+    };
+  }
+
   function fristText(x) {
     if (!x.frist) return el('span', { class: 'leise', text: '–' });
     const geerbt = x.quelle && x.quelle !== 'eigen';
@@ -80,7 +112,7 @@ const Pakete = (() => {
       el('td', { class: 'mono', text: a.kuerzel }),
       el('td', {}, a.titel, ' ', link(a), a.kann.length ? el('span', { class: 'leise klein', text: ' · ' + p.kann.filter(k => a.kann.includes(k.id)).map(k => k.kuerzel).join(', ') }) : null),
       el('td', {}, a.art === 'pflicht' ? el('span', { class: 'chip', text: 'Pflicht' }) : a.art === 'wahl' ? el('span', { class: 'chip blau', text: 'Wahl' })
-        : el('span', { class: 'chip gelb', text: ZUSATZ[a.zusatz_art] }), a.team ? el('span', { class: 'chip lila klein', title: 'zu zweit möglich', text: 'zu zweit' }) : null),
+        : el('span', { class: 'chip gelb', text: ZUSATZ[a.zusatz_art] }), teamChip(a.team)),
       el('td', {}, a.art === 'zusatz' ? el('span', { class: 'leise klein', text: 'bei Empfehlung' }) : fristText(a)),
       el('td', { class: 'leise klein', text: a.voraussetzung ? 'nach ' + a.voraussetzung : '' }),
       el('td', { class: 'knoepfe' }, pfeile('/aufgaben/' + a.id), darf ? el('button', { type: 'button', class: 'klein', onclick: () => aufgabeDialog(p, a) }, 'Bearbeiten') : null));
@@ -88,7 +120,7 @@ const Pakete = (() => {
     p.ablauf.forEach(e => {
       if (e.typ === 'aufgabe') { zeilen.push(zeile(e)); return; }
       zeilen.push(el('tr', { class: 'gruppe-zeile' }, el('td', { colspan: 6 }, el('div', { class: 'zeile' },
-        el('b', { text: 'Wahlgruppe ' + e.buchstabe }), e.titel ? ' · ' + e.titel : '', ' · wähle ' + e.waehlen + ' von ' + e.aufgaben.length,
+        el('b', { text: 'Wahlgruppe ' + e.buchstabe }), e.titel ? ' · ' + e.titel : '', ' · wähle ' + e.waehlen + ' von ' + e.aufgaben.length, teamChip(e.team),
         e.frist ? el('span', { class: 'klein' }, ' · Frist ', fristText(e)) : null,
         el('span', { class: 'rechts' }, pfeile('/gruppen/' + e.id),
           darf ? el('button', { type: 'button', class: 'klein', onclick: () => aufgabeDialog(p, null, 'wahl', e) }, L.symbol('plus'), 'Aufgabe') : null,
@@ -108,7 +140,8 @@ const Pakete = (() => {
         p.lernfeld ? el('span', { class: 'chip', text: p.lernfeld }) : null,
         p.vorlage ? el('span', { class: 'chip', text: 'Vorlage' }) : el('a', { class: 'chip blau', href: '#pakete/' + p.klasse_id, text: p.klasse }),
         p.archiviert ? el('span', { class: 'chip', text: 'archiviert' }) : null,
-        p.team ? el('span', { class: 'chip lila', text: 'ganzes Paket zu zweit' }) : null,
+        teamChip(p.team),
+        !p.vorlage && p.klasse_id ? el('a', { class: 'knopf', href: '#teams/' + p.klasse_id }, L.symbol('klassen'), 'Teams') : null,
         darf ? el('button', { type: 'button', onclick: () => paketDialog(p) }, 'Bearbeiten') : null,
         darf && !p.vorlage ? el('button', { type: 'button', class: p.freigabe ? null : 'haupt', onclick: () => freigabeDialog(p) }, p.freigabe ? 'Freigabe ändern' : 'Freigeben …') : null,
         el('button', { type: 'button', onclick: () => kopierDialog(p) }, L.symbol('kopie'), 'Kopieren')),
@@ -171,7 +204,7 @@ const Pakete = (() => {
     vor.value = a && a.voraussetzung_id ? a.voraussetzung_id : '';
     const zusatz = el('select', {}, Object.entries(ZUSATZ).map(([w, t]) => el('option', { value: w, text: t })));
     zusatz.value = a && a.zusatz_art ? a.zusatz_art : 'vertiefung';
-    const team = el('input', { type: 'checkbox', checked: !!(a && a.team_eigen) });
+    const team = teamFelder(a ? a.team : null, 'aufgabe');
     const was = art === 'pflicht' ? 'Pflichtaufgabe' : art === 'wahl' ? 'Aufgabe in Wahlgruppe ' + (gruppe ? gruppe.buchstabe : '') : 'Zusatzaufgabe';
     fertig(await L.dialog({
       titel: a ? a.kuerzel + ' bearbeiten' : 'Neue ' + was, knopf: a ? 'Speichern' : 'Anlegen',
@@ -181,14 +214,13 @@ const Pakete = (() => {
         art === 'zusatz' ? L.feld('Art der Zusatzaufgabe', zusatz, 'Frist setzen Sie, wenn Sie sie einem Schüler verbindlich empfehlen')
           : el('div', { class: 'felder zwei' }, L.feld('Frist', frist, art === 'wahl' ? 'leer = Frist der Wahlgruppe' : 'leer = Paket-Frist'),
             L.feld('Voraussetzung', vor, 'vorgemerkt, die Reihenfolge bleibt vorerst frei')),
-        art === 'zusatz' ? null : p.team ? el('p', { class: 'leise klein', text: 'Das ganze Paket ist zu zweit möglich (Paket bearbeiten).' })
-          : el('label', { class: 'haken' }, team, 'zu zweit möglich (Schüler bilden ein Zweierteam: gemeinsamer Plan, eine Fertigmeldung, eine Rückmeldung)'),
+        art === 'zusatz' ? el('p', { class: 'leise klein', text: 'Zusatzaufgaben bearbeitet jeder allein.' }) : team.block,
         a ? el('div', {}, entfernen(a.kuerzel + ' entfernen?', '„' + a.titel + '“ verschwindet aus dem Paket. Schon Geplantes der Schüler bleibt im Verlauf.', '/aufgaben/' + a.id, p.id)) : null),
       speichern: () => {
         const d = { titel: titel.value, moodle_link: link.value };
         if (kuerzel.value) d.kuerzel = kuerzel.value;
         if (art === 'zusatz') d.zusatz_art = zusatz.value;
-        else { d.frist = frist.value || null; d.voraussetzung_id = vor.value ? Number(vor.value) : null; d.team = team.checked; }
+        else { d.frist = frist.value || null; d.voraussetzung_id = vor.value ? Number(vor.value) : null; Object.assign(d, team.lesen()); }
         if (!a) { d.art = art; if (gruppe) d.wahlgruppe_id = gruppe.id; }
         return api(p.id, a ? '/aufgaben/' + a.id : '/aufgaben', d);
       },
@@ -199,13 +231,15 @@ const Pakete = (() => {
     const titel = el('input', { maxlength: 80, value: g ? g.titel : '', placeholder: 'z. B. Lernsituation' });
     const waehlen = el('input', { type: 'number', min: 1, max: 9, value: g ? g.waehlen : 1, required: true });
     const frist = datumFeld(g ? g.eigene_frist : '');
+    const team = teamFelder(g ? g.team : null, 'gruppe');
     fertig(await L.dialog({
       titel: g ? 'Wahlgruppe ' + g.buchstabe : 'Neue Wahlgruppe', knopf: g ? 'Speichern' : 'Anlegen',
       inhalt: el('div', { class: 'felder' }, L.feld('Titel', titel),
         el('div', { class: 'felder zwei' }, L.feld('Wie viele wählen?', waehlen, '„wähle 1 von 3“'), L.feld('Gemeinsame Frist', frist, 'leer = Paket-Frist')),
+        team.block, el('p', { class: 'leise klein', text: 'Ein Team für die Wahlgruppe wählt gemeinsam eine Aufgabe der Gruppe.' }),
         g ? el('div', {}, entfernen('Wahlgruppe ' + g.buchstabe + ' entfernen?', 'Die Gruppe und ihre Aufgaben verschwinden aus dem Paket.', '/gruppen/' + g.id, p.id))
           : el('p', { class: 'leise klein', text: 'Danach legen Sie die Aufgaben der Gruppe an (A1, A2, …).' })),
-      speichern: () => api(p.id, g ? '/gruppen/' + g.id : '/gruppen', { titel: titel.value, waehlen: Number(waehlen.value), frist: frist.value || null }),
+      speichern: () => api(p.id, g ? '/gruppen/' + g.id : '/gruppen', Object.assign({ titel: titel.value, waehlen: Number(waehlen.value), frist: frist.value || null }, team.lesen())),
     }));
   }
 
@@ -252,13 +286,13 @@ const Pakete = (() => {
     const lf = el('input', { maxlength: 20, value: p.lernfeld });
     const frist = datumFeld(p.frist.frist);
     const archiv = el('input', { type: 'checkbox', checked: p.archiviert });
-    const team = el('input', { type: 'checkbox', checked: p.team });
+    const team = teamFelder(p.team, 'paket');
     fertig(await L.dialog({
       titel: 'Paket bearbeiten',
       inhalt: el('div', { class: 'felder' }, L.feld('Titel', titel), el('div', { class: 'felder zwei' }, L.feld('Lernfeld', lf), L.feld('Paket-Frist', frist, 'gilt für alles ohne eigene Frist')),
-        el('label', { class: 'haken' }, team, 'ganzes Paket zu zweit möglich (ein Partner für alle Aufgaben außer Zusatzaufgaben; der Gelingensnachweis bleibt einzeln)'),
+        team.block, el('p', { class: 'leise klein', text: 'Gilt für alle Aufgaben außer Zusatzaufgaben; Wahlgruppen und Aufgaben können abweichen. Der Gelingensnachweis bleibt einzeln.' }),
         el('label', { class: 'haken' }, archiv, 'archiviert (Schüler sehen es nicht mehr in der Planung)')),
-      speichern: () => api(p.id, '', { titel: titel.value, lernfeld: lf.value, frist: frist.value || null, archiviert: archiv.checked, team: team.checked }),
+      speichern: () => api(p.id, '', Object.assign({ titel: titel.value, lernfeld: lf.value, frist: frist.value || null, archiviert: archiv.checked }, team.lesen())),
     }));
   }
 

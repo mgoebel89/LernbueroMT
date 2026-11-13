@@ -214,6 +214,8 @@ def loeschen(con, konto, klasse_id, bestaetigung):
     if re.sub(r"\s+", " ", str(bestaetigung or "")).strip().lower() != k["name"].strip().lower():
         raise KlassenFehler("Bitte zur Bestätigung den Namen der Klasse eingeben: %s" % k["name"])
     anzahl = con.execute("SELECT COUNT(*) FROM schueler WHERE klasse_id = ?", (klasse_id,)).fetchone()[0]
+    verlaeufe = ["t%d" % z[0] for z in con.execute("SELECT id FROM lernteam WHERE klasse_id = ?", (klasse_id,))] +         ["s%d" % z[0] for z in con.execute("SELECT id FROM schueler WHERE klasse_id = ?", (klasse_id,))]
+    con.executemany("DELETE FROM gelesen WHERE verlauf = ?", [(v,) for v in verlaeufe])
     con.execute("DELETE FROM klasse WHERE id = ?", (klasse_id,))
     db.ereignis(con, None, None, "lehrkraft", konto["kuerzel"], "klasse_geloescht", name=k["name"], schuljahr=k["schuljahr"], schueler=anzahl)
     return anzahl

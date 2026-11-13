@@ -100,7 +100,8 @@ def _stand(con, schueler_id, klasse_id=None):
     wahl = {z[0] for z in con.execute("SELECT aufgabe_id FROM wahl WHERE schueler_id = ?", (schueler_id,))}
     meld = {}
     for z in con.execute("SELECT * FROM meldung WHERE schueler_id = ? AND status != 'zurueckgezogen' ORDER BY id", (schueler_id,)):
-        meld[z["aufgabe_id"]] = {"id": z["id"], "status": z["status"], "zeit": z["zeit"], "entschieden": z["entschieden"]}
+        meld[z["aufgabe_id"]] = {"id": z["id"], "status": z["status"], "zeit": z["zeit"], "entschieden": z["entschieden"],
+                                 "bestaetigt": z["bestaetigt"]}
     if klasse_id is None:
         klasse_id = con.execute("SELECT klasse_id FROM schueler WHERE id = ?", (schueler_id,)).fetchone()[0]
     sfrist = {}
@@ -187,7 +188,8 @@ def zustand(con, schueler, heute=None):
     schueler: Zeile mit id, klasse_id (z. B. aus klassen.per_code)."""
     heute = _heute(heute)
     sid, kid = schueler["id"], schueler["klasse_id"]
-    strukturen = [pakete.struktur(con, p) for p in sichtbare_pakete(con, kid, heute)]
+    zeilen_p = sichtbare_pakete(con, kid, heute)
+    strukturen = [pakete.struktur(con, p) for p in zeilen_p]
     st_alle = _stand(con, sid, kid)
     plan, ist, wahl = st_alle["plan"], st_alle["ist"], st_alle["wahl"]
     spalten = _spalten(con, kid, strukturen, heute)
@@ -197,9 +199,24 @@ def zustand(con, schueler, heute=None):
     hinweise = {"ausfall": [], "ampel_alt": []}
     ts = teams.stand_schueler(con, schueler)
     probleme = zeitplan.fuer_schueler(con, sid)
+    einheiten = {}
+    for p_zeile in zeilen_p:
+        for k, e in teams.einheiten_paket(con, p_zeile).items():
+            if k in einheiten:
+                einheiten[k]["kuerzel"] += e["kuerzel"]
+                continue
+            einheiten[k] = {"schluessel": k, "bereich": e["bereich"], "bezug_id": e["bezug_id"], "modus": e["modus"], "modus_text": e["modus_text"],
+                            "min": e["min"], "max": e["max"], "stichtag": e["stichtag"], "titel": e["titel"], "kuerzel": list(e["kuerzel"]),
+                            "selbst": e["modus"] in teams.SELBST, "team": ts["teams"].get(k)}
+    einheit_von = {}
+    for p_zeile in zeilen_p:
+        for k, e in teams.einheiten_paket(con, p_zeile).items():
+            for aid in e["aufgaben"]:
+                einheit_von[aid] = k
     for s in strukturen:
+        pk = "stamm:%d" % kid if s["team"] and s["team"]["modus"] == "stamm" else "paket:%d" % s["id"] if s["team"] and s["team"]["modus"] != "einzeln" else None
         paket = {"id": s["id"], "titel": s["titel"], "lernfeld": s["lernfeld"], "frist": s["frist"], "zeilen": [],
-                 "team_moeglich": s["team"], "team": ts["paket"].get(s["id"]),
+                 "einheit": pk if pk in einheiten else None,
                  "kann": [], "nachweise": [{"id": n["id"], "titel": n["titel"], "art": n["art"], "frist": n["frist"], "wirksam": n["wirksam"]}
                                          for n in s["nachweise"]]}
 
@@ -225,17 +242,20 @@ def zustand(con, schueler, heute=None):
                     "moodle_link": a["moodle_link"], "frist": a["frist"], "wirksam": st["frist_schueler"], "gewaehlt": gewaehlt,
                     "wahlgruppe_id": a["wahlgruppe_id"], "plan": sorted(plan.get(a["id"], ())), "ist": ist.get(a["id"], {}),
                     "kann": a["kann"], "empfehlungen": st_alle["emp"].get(a["id"], []), "zusatz_art": a.get("zusatz_art"),
-                    "kann_liste": kann_liste(a), "probleme": probleme.get(a["id"], {}), "team_moeglich": bool(a.get("team")) and not s["team"], "team": ts["aufgabe"].get(a["id"]) or (
-                        ts["paket"].get(s["id"]) if s["team"] and a["art"] != "zusatz" else None), **st}
+                    "kann_liste": kann_liste(a), "probleme": probleme.get(a["id"], {}), "einheit": einheit_von.get(a["id"]),
+                    "team": ts["teams"].get(einheit_von.get(a["id"])) if a["id"] in einheit_von else None, **st}
 
         for e in s["ablauf"]:
             if e["typ"] == "aufgabe":
                 paket["zeilen"].append(zeile(e))
             else:
                 gewaehlte = [a["kuerzel"] for a in e["aufgaben"] if a["id"] in wahl]
+                gk = None
+                if e["team"] and e["team"]["modus"] != "einzeln":
+                    gk = "stamm:%d" % kid if e["team"]["modus"] == "stamm" else "gruppe:%d" % e["id"]
                 paket["zeilen"].append({"typ": "gruppe", "id": e["id"], "buchstabe": e["buchstabe"], "titel": e["titel"],
                                         "waehlen": e["waehlen"], "anzahl": len(e["aufgaben"]), "gewaehlt": gewaehlte,
-                                        "frist": e["frist"], "wirksam": e["wirksam"]})
+                                        "frist": e["frist"], "wirksam": e["wirksam"], "einheit": gk if gk in einheiten else None})
                 paket["zeilen"] += [zeile(a, e) for a in e["aufgaben"]]
         empfohlen = [a for a in s["zusatz"] if a["id"] in st_alle["emp"]]
         if empfohlen:   # Zusatzaufgaben nur, wenn sie empfohlen sind: eigene Zeilen "Empfohlen fuer dich"
@@ -252,8 +272,19 @@ def zustand(con, schueler, heute=None):
         aus.append(paket)
     heute_tag = next((t for t in ut.tage(con, kid, heute, heute)), None)
     abgeschlossen = con.execute("SELECT zeit FROM abschluss WHERE schueler_id = ? AND datum = ?", (sid, heute.isoformat())).fetchone()
+    bestaetigen = []
+    for m in con.execute("SELECT m.*, a.kuerzel, a.titel FROM meldung m JOIN aufgabe a ON a.id = m.aufgabe_id WHERE m.schueler_id = ? "
+                         "AND m.status = 'offen' AND m.bestaetigt IS NULL AND m.gruppe IS NOT NULL", (sid,)).fetchall():
+        gruppe = con.execute("SELECT m.schueler_id, m.bestaetigt, s.vorname, s.nachname FROM meldung m JOIN schueler s ON s.id = m.schueler_id "
+                             "WHERE m.gruppe = ? AND m.status = 'offen' ORDER BY m.id", (m["gruppe"],)).fetchall()
+        von = next((g for g in gruppe if g["schueler_id"] != sid and g["bestaetigt"]), None)
+        bestaetigen.append({"meldung_id": m["id"], "aufgabe_id": m["aufgabe_id"], "kuerzel": m["kuerzel"], "titel": m["titel"],
+                            "von": "%s %s" % (von["vorname"], von["nachname"]) if von else "dein Team",
+                            "mitglieder": [{"name": "%s %s" % (g["vorname"], g["nachname"]), "ich": g["schueler_id"] == sid,
+                                            "bestaetigt": bool(g["bestaetigt"])} for g in gruppe]})
     return {"heute": heute.isoformat(), "heute_tag": heute_tag, "abgeschlossen": abgeschlossen[0] if abgeschlossen else None,
-            "spalten": spalten, "pakete": aus, "hinweise": hinweise, "einladungen": ts["einladungen"]}
+            "spalten": spalten, "pakete": aus, "hinweise": hinweise, "einladungen": ts["einladungen"], "einheiten": einheiten,
+            "bestaetigen": bestaetigen}
 
 
 # --- Aenderungen durch den Schueler ---
@@ -312,8 +343,7 @@ def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None, 
             daten["grund"] = grund
         erstes = not vorher and neu
         _log(con, schueler, "plan_neu" if erstes else "plan", **daten)
-        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
-        if p is not None:   # Teamaufgabe: der Plan gilt fuer beide
+        for p in (teams.teamkollegen(con, schueler["id"], aufgabe_id) if spiegeln else []):   # Teamaufgabe: der Plan gilt fuer alle
             try:
                 planen(con, p, aufgabe_id, hinzu=neu, weg=raus, grund="team", heute=heute, spiegeln=False)
             except PlanFehler:
@@ -362,8 +392,7 @@ def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None, spiegeln=True)
             waehlen(con, schueler, andere[0], False, heute, spiegeln)   # "1 von 3": die bisherige wird getauscht
         con.execute("INSERT INTO wahl (schueler_id, aufgabe_id, zeit) VALUES (?, ?, ?)", (schueler["id"], aufgabe_id, db.jetzt()))
         _log(con, schueler, "gewaehlt", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], gruppe=g["buchstabe"])
-        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
-        if p is not None:   # Paket-Team: beide waehlen dieselbe Aufgabe
+        for p in (teams.teamkollegen(con, schueler["id"], aufgabe_id) if spiegeln else []):   # Team: alle waehlen dieselbe Aufgabe
             try:
                 waehlen(con, p, aufgabe_id, True, heute, spiegeln=False)
             except PlanFehler:
@@ -379,9 +408,8 @@ def waehlen(con, schueler, aufgabe_id, gewaehlt=True, heute=None, spiegeln=True)
         con.execute("DELETE FROM plan WHERE schueler_id = ? AND aufgabe_id = ? AND datum >= ?", (schueler["id"], aufgabe_id, heute.isoformat()))
         con.execute("DELETE FROM wahl WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aufgabe_id))
         _log(con, schueler, "abgewaehlt", aufgabe_id=aufgabe_id, kuerzel=a["kuerzel"], gruppe=g["buchstabe"], weg=kuenftig)
-        teams.bei_abwahl(con, schueler, aufgabe_id)            # ein Team nur fuer diese Aufgabe endet
-        p = teams.partner(con, schueler["id"], aufgabe_id) if spiegeln else None
-        if p is not None:                                      # Paket-Team: der Partner waehlt mit ab
+        teams.bei_abwahl(con, schueler, aufgabe_id)            # ein Team nur fuer diese Aufgabe verlaesst der Schueler
+        for p in (teams.teamkollegen(con, schueler["id"], aufgabe_id) if spiegeln else []):   # Team: alle waehlen mit ab
             try:
                 waehlen(con, p, aufgabe_id, False, heute, spiegeln=False)
             except PlanFehler:

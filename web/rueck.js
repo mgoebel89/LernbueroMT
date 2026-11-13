@@ -68,8 +68,9 @@ const Rueck = (() => {
     v.kann.forEach(k => { if (k.lehrkraft) kannWerte[k.kann_id] = k.lehrkraft; });
     if (e && e.kann) e.kann.forEach(k => { kannWerte[k.kann_id] = k.stufe; });
 
-    // Zweierteam: gemeinsamer Text und gemeinsame Entscheidung, Kann-Einschätzung und Empfehlungen je Person
+    // Lernteam: Teil „An das ganze Team“ mit der Entscheidung, je Person eigener Text, Kann-Einschätzung und Empfehlungen
     const partner = (v.partner || []).filter(() => !lesen);
+    const team = partner.length > 0;
     const partnerWerte = partner.map(pv => {
       const w = {};
       pv.kann.forEach(k => { if (k.lehrkraft) w[k.kann_id] = k.lehrkraft; });
@@ -77,7 +78,7 @@ const Rueck = (() => {
       return w;
     });
     const alle = [v.schueler.vorname].concat(partner.map(pv => pv.schueler.vorname)).join(' und ');
-    const kopf = el('div', { class: 'leise klein' }, (partner.length ? 'Zweierteam: ' + [name].concat(partner.map(pv => pv.schueler.vorname + ' ' + pv.schueler.nachname)).join(' + ') : name)
+    const kopf = el('div', { class: 'leise klein' }, (partner.length ? 'Team: ' + [name].concat(partner.map(pv => pv.schueler.vorname + ' ' + pv.schueler.nachname)).join(' + ') : name)
       + ' · ' + v.schueler.klasse,
       v.meldung ? ' · fertig gemeldet ' + L.wann(v.meldung.zeit) + (offen ? '' : ' (' + ({ angenommen: 'angenommen', ueberarbeiten: 'überarbeiten', zurueckgezogen: 'zurückgezogen' }[v.meldung.status] || '') + ')') : '',
       v.termin ? ' · Termin ' + L.tag(v.termin.datum) + ' ' + v.termin.beginn : '',
@@ -183,9 +184,13 @@ const Rueck = (() => {
       ergebnisBlock = el('div', { class: 'banner klein', text: 'Dieser Versuch ist schon abgeschlossen oder zurückgezogen.' });
     }
 
-    // Text
-    const text = el('textarea', { rows: 6, maxlength: 6000, readonly: lesen || null, placeholder: 'Rückmeldung für ' + v.schueler.vorname + ' …' });
-    text.value = e ? e.text : '';
+    // Text (im Team: der Teil für alle; dazu je Person ein eigener Text)
+    const text = el('textarea', { rows: team ? 4 : 6, maxlength: 6000, readonly: lesen || null,
+      placeholder: team ? 'An das ganze Team …' : 'Rückmeldung für ' + v.schueler.vorname + ' …' });
+    text.value = e ? (team ? e.team_text || '' : e.text) : '';
+    const eigenFeld = wert => { const t = el('textarea', { rows: 3, maxlength: 6000, placeholder: 'nur für diese Person …' }); t.value = wert || ''; return t; };
+    const eigen = team ? eigenFeld(e ? e.text : '') : null;
+    const partnerEigen = partner.map(pv => eigenFeld(pv.entwurf ? pv.entwurf.text : ''));
     const textWerkzeug = lesen ? null : el('div', { class: 'zeile' },
       typeof Diktat !== 'undefined' ? Diktat.knopf(text, v) : null,
       el('button', { type: 'button', class: 'klein', onclick: () => { text.value = fuellwoerter(text.value); }, text: 'Füllwörter entfernen' }));
@@ -215,7 +220,7 @@ const Rueck = (() => {
     const daten = freigeben => ({
       schueler_id: v.schueler.id, id: e && !e.freigegeben ? e.id : undefined, meldung_id: v.meldung ? v.meldung.id : undefined,
       termin_id: v.termin ? v.termin.id : undefined, aufgabe_id: v.aufgabe ? v.aufgabe.id : undefined, paket_id: v.paket_id || undefined,
-      text: text.value, entscheidung: entscheidung ? entscheidung() : undefined,
+      text: team ? eigen.value : text.value, team_text: team ? text.value : undefined, entscheidung: entscheidung ? entscheidung() : undefined,
       neue_frist: neueFrist ? neueFrist.value : ergFrist && ergebnis && ergebnis() === 'nicht' ? ergFrist.value : undefined,
       versuch_id: nw ? nw.versuch.id : undefined, ergebnis: ergebnis ? ergebnis() || undefined : undefined,
       punkte: punkte ? punkte.value : undefined, note: note ? note.value : undefined,
@@ -225,9 +230,9 @@ const Rueck = (() => {
     const teamDaten = freigeben => {
       const d = daten(freigeben);
       if (!partner.length) return d;
-      d.personen = [{ schueler_id: v.schueler.id, id: d.id, meldung_id: d.meldung_id, kann: d.kann, empfehlungen: d.empfehlungen }].concat(partner.map((pv, i) => ({
+      d.personen = [{ schueler_id: v.schueler.id, id: d.id, meldung_id: d.meldung_id, text: eigen.value, kann: d.kann, empfehlungen: d.empfehlungen }].concat(partner.map((pv, i) => ({
         schueler_id: pv.schueler.id, id: pv.entwurf && !pv.entwurf.freigegeben ? pv.entwurf.id : undefined, meldung_id: pv.meldung.id,
-        kann: partnerWerte[i], empfehlungen: lesenListe(partnerListen[i]) })));
+        text: partnerEigen[i].value, kann: partnerWerte[i], empfehlungen: lesenListe(partnerListen[i]) })));
       d.empfehlungen = d.personen.reduce((alle, p) => alle.concat(p.empfehlungen), []);
       return d;
     };
@@ -264,9 +269,16 @@ const Rueck = (() => {
           L.symbol('extern'), 'Abgabe in Moodle ansehen') : null,
         nw && nw.moodle_link ? el('a', { class: 'knopf klein', style: 'justify-self:start', href: nw.moodle_link, target: '_blank', rel: 'noopener' },
           L.symbol('extern'), 'Test in Moodle ansehen') : null,
-        kannTab, entscheidungsBlock, ergebnisBlock,
-        el('div', { class: 'stapel', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'Text für ' + alle + (lesen ? '' : ' (bearbeitbar)') }), text, textWerkzeug),
-        empBlock, partnerEmp,
+        team ? null : kannTab, entscheidungsBlock, ergebnisBlock,
+        lesen && e && e.team_text ? el('div', { class: 'stapel teil-team', style: 'gap:6px' }, el('div', { class: 'etikett', text: 'An das ganze Team' }),
+          el('p', { class: 'rm-text', text: e.team_text })) : null,
+        el('div', { class: 'stapel' + (team ? ' teil-team' : ''), style: 'gap:6px' },
+          el('div', { class: 'etikett', text: team ? 'An das ganze Team · lesen alle: ' + alle : (lesen && e && e.team_text ? 'Nur für ' + v.schueler.vorname : 'Text für ' + alle + (lesen ? '' : ' (bearbeitbar)')) }),
+          text, textWerkzeug),
+        team ? [el('div', { class: 'stapel teil-person', style: 'gap:8px' }, el('div', { class: 'etikett', text: 'Nur für ' + v.schueler.vorname }), eigen,
+          kannTabelle(v.kann, kannWerte, v.schueler.vorname), empBlock)].concat(partner.map((pv, i) => el('div', { class: 'stapel teil-person', style: 'gap:8px' },
+          el('div', { class: 'etikett', text: 'Nur für ' + pv.schueler.vorname + (pv.meldung && !pv.meldung.bestaetigt ? ' · hat noch nicht bestätigt' : '') }), partnerEigen[i],
+          kannTabelle(pv.kann, partnerWerte[i], pv.schueler.vorname), partnerEmp[i]))) : [empBlock],
         e && !e.freigegeben && !lesen ? L.nebenknopf('Entwurf verwerfen …', () => verwerfen(e, o)) : null),
       speichern: speichern(true),
     }).then(r => { if (r && o.danach) o.danach(r); return r; });

@@ -22,13 +22,13 @@ KATEGORIEN = {
     "wahl": ("gewaehlt", "abgewaehlt"),
     "stand": ("tagesabschluss", "markiert", "zeitplan_rot"),
     "kann": ("kann_vorher", "kann_nachher"),
-    "melden": ("fertig", "fertig_zurueck", "rueckmeldung", "gespraech", "empfehlung", "empfehlung_entfernt", "empfehlung_erledigt",
+    "melden": ("fertig", "fertig_zurueck", "fertig_team", "fertig_bestaetigt", "fertig_noch_nicht", "rueckmeldung", "gespraech", "empfehlung", "empfehlung_entfernt", "empfehlung_erledigt",
                "empfehlung_offen"),
     "nachweis": ("bereit", "bereit_zurueck", "freigeschaltet", "freischaltung_zurueck", "nachweis_ergebnis"),
-    "termin": ("termin_gebucht", "termin_abgesagt", "hilfe", "hilfe_zurueck", "hilfe_erledigt"),
+    "termin": ("termin_gebucht", "termin_abgesagt", "teamtermin", "hilfe", "hilfe_zurueck", "hilfe_erledigt"),
 }
 KATEGORIE_TEXT = {"plan": "Planung", "wahl": "Wahl", "stand": "Stand und Farben", "kann": "Kann-Liste", "melden": "Melden und Rückmeldung",
-                  "nachweis": "Gelingensnachweise", "termin": "Termine und Hilfe", "team": "Zweierteams", "sonst": "Sonstiges"}
+                  "nachweis": "Gelingensnachweise", "termin": "Termine und Hilfe", "team": "Lernteams", "sonst": "Sonstiges"}
 
 
 def kategorie(art):
