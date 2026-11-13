@@ -54,9 +54,11 @@ const Zeiten = (() => {
       gesperrt ? el('div', { class: 'banner warnung klein', text: (b.status === 'ohne' ? 'ohne Lehrkraft: ' : b.status === 'ferien' ? 'Ferien: ' : 'fällt aus: ') + b.grund + ' · keine Termine' }) : null,
       gesperrt ? null : el('div', { class: 'slot-liste' }, b.plaetze.map(p => p.puffer
         ? el('div', { class: 'slot puffer' }, el('span', { class: 'mono', text: p.beginn + '–' + p.ende }), el('span', { text: 'Puffer' }))
-        : el('div', { class: 'slot' + (p.termin ? ' gebucht' : '') }, el('span', { class: 'mono', text: p.beginn + '–' + p.ende }),
-          p.termin ? el('span', {}, el('b', { text: p.termin.name }), el('span', { class: 'leise klein', text: ' ' + TERMINART[p.termin.art] + ' · ' + p.termin.anlass }))
-            : el('span', { class: 'leise', text: 'frei' }),
+        : el('div', { class: 'slot' + (p.termin ? ' gebucht' : p.dienst ? ' dienst' : '') }, el('span', { class: 'mono', text: p.beginn + '–' + p.ende }),
+          p.termin ? el('span', {}, el('b', { text: p.termin.name }), el('span', { class: 'leise klein', text: ' ' + TERMINART[p.termin.art] + ' · ' + p.termin.anlass }),
+            p.dienst ? el('span', { class: 'chip gelb klein', style: 'margin-left:6px', title: 'Überschneidung mit dem Dienstkalender', text: 'überschneidet sich: ' + p.dienst }) : null)
+            : p.dienst ? el('span', { class: 'leise', text: 'nicht buchbar · ' + (p.dienst === 'Dienstkalender' ? 'Dienstkalender' : 'Dienstkalender: ' + p.dienst) })
+              : el('span', { class: 'leise', text: 'frei' }),
           p.termin && team ? el('span', { class: 'rechts' },
             el('button', { type: 'button', class: 'klein', onclick: () => Rueck.oeffnen({ schueler: p.termin.schueler_id, termin: p.termin.id, danach: zeigen }) }, 'öffnen'),
             el('button', { type: 'button', class: 'klein warnen', onclick: () => absagen(p.termin, b) }, 'absagen')) : null))));

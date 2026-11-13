@@ -1,6 +1,8 @@
 """Kalender-Abos (ICS), Bauweise wie im TrackingDRS. Stufe B: der Schulkalender (Admin), aus ihm kommen die Ferien
-(ganztaegige Eintraege, deren Titel ein Stichwort wie "Ferien" enthaelt). Der Dienstkalender je Lehrkraft folgt mit
-Stufe F (Tabelle und Abruf sind schon dafuer gebaut). Der Server holt die Abos alle 30 Minuten neu, nur lesend.
+(ganztaegige Eintraege, deren Titel ein Stichwort wie "Ferien" enthaelt). Stufe F: der Dienstkalender je Lehrkraft
+(Outlook-Veroeffentlichung als ICS), nur fuer die Lehrkraft selbst sichtbar. Seine Termine mit Uhrzeit sperren die
+Plaetze der eigenen Sprech- und Pruefungszeiten; ganztaegige Eintraege sperren nichts. Der Server holt die Abos alle
+30 Minuten neu, nur lesend; nach Outlook wird nichts geschrieben.
 
 Abruf nur ueber https und nur zu oeffentlichen Adressen (der Container haengt im Schulnetz).
 Ohne die Pakete python3-icalendar und python3-recurring-ical-events bleibt der Rest der Anwendung lauffaehig.
@@ -185,6 +187,41 @@ def abrufen(con, art, lehrkraft_id=None, laden=herunterladen):
         if art == "schule":
             _ferien_uebernehmen(con, ferien_aus(liste, db.einstellung(con, "schulkalender_stichwoerter", STICHWOERTER)))
     return abo_status(con, art, lehrkraft_id)
+
+
+def dienst_termine(con, lehrkraft_id, von, bis):
+    """Eintraege des Dienstkalenders, die zwischen von und bis (date, einschliesslich) liegen oder hineinreichen."""
+    a = _abo(con, "dienst", lehrkraft_id)
+    if a is None:
+        return []
+    return [dict(z) for z in con.execute(
+        "SELECT beginn, ende, ganztags, titel, ort FROM kalender_termin WHERE abo_id = ? AND beginn <= ? AND ende >= ? ORDER BY beginn",
+        (a["id"], bis.isoformat() + "T23:59", von.isoformat()))]
+
+
+def _minuten(hhmm):
+    return int(hhmm[:2]) * 60 + int(hhmm[3:5])
+
+
+def dienst_belegt(con, lehrkraft_id, datum):
+    """[(von, bis, titel)] in Minuten seit Mitternacht: die Termine mit Uhrzeit an diesem Tag (ueber Mitternacht
+    gekappt). Ganztaegige Eintraege (Ferien, Konferenztag ohne Uhrzeit) sperren nichts."""
+    d = datum.isoformat()
+    aus = []
+    for t in dienst_termine(con, lehrkraft_id, datum, datum):
+        if t["ganztags"]:
+            continue
+        von = _minuten(t["beginn"][11:16]) if t["beginn"][:10] == d else 0
+        bis = _minuten(t["ende"][11:16]) if t["ende"][:10] == d else 24 * 60
+        if bis > von:
+            aus.append((von, bis, t["titel"]))
+    return aus
+
+
+def kollision(beginn, ende, belegt):
+    """Titel des ersten Dienst-Termins, der sich mit beginn..ende (HH:MM) ueberschneidet, sonst None."""
+    b, e = _minuten(beginn), _minuten(ende)
+    return next((titel for von, bis, titel in belegt if von < e and b < bis), None)
 
 
 def faellige_abrufen(con, laden=herunterladen):

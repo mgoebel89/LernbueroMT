@@ -23,8 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import datetime
 import time
 
-from . import (VERSION, db, diktat, kalender, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr, rueckmeldung, teams,
-               termine, unterrichtstage, updates, zeitplan)
+from . import (VERSION, berichte, db, diktat, kalender, kalenderansicht, klassen, konten, lernplan, moodle, nachweise, pakete, pdf, qr,
+               rueckmeldung, teams, termine, unterrichtstage, updates, verlauf, zeitplan)
 
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASIS, "web")
@@ -212,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         except (konten.KontoFehler, klassen.KlassenFehler, moodle.MoodleFehler, qr.QrFehler, updates.UpdateFehler,
                 unterrichtstage.TageFehler, kalender.KalenderFehler, pakete.PaketFehler, lernplan.PlanFehler,
                 rueckmeldung.RueckmeldungFehler, termine.TerminFehler, diktat.DiktatFehler,
-                nachweise.NachweisFehler, teams.TeamFehler, zeitplan.ZeitplanFehler) as f:
+                nachweise.NachweisFehler, teams.TeamFehler, zeitplan.ZeitplanFehler, kalenderansicht.KalenderansichtFehler) as f:
             self.antwort(400, {"fehler": str(f)})
         except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
@@ -594,19 +594,26 @@ def api_paket_kopieren(h, con, daten, pid):
 def api_einstellungen(h, con, daten):
     _admin(h, con)
     h.antwort(200, {"schueler_adresse": db.einstellung(con, "schueler_adresse", ""),
-                    "vorschlag": "http://%s%s" % (h.host(), "" if HTTP_PORT == 80 else ":%d" % HTTP_PORT)})
+                    "vorschlag": "http://%s%s" % (h.host(), "" if HTTP_PORT == 80 else ":%d" % HTTP_PORT),
+                    "loeschfrist_monate": klassen.loeschfrist_monate(con)})
 
 
 def api_einstellungen_aendern(h, con, daten):
     _admin(h, con)
-    adresse = (daten.get("schueler_adresse") or "").strip().rstrip("/")
-    if adresse and not re.fullmatch(r"https?://[A-Za-z0-9.-]{1,253}(:\d{1,5})?", adresse):
-        raise Fehler(400, "Bitte eine Adresse wie http://192.168.7.3 oder http://lernbuero angeben.")
     with db.transaktion(con):
-        if adresse:
-            db.einstellung_setzen(con, "schueler_adresse", adresse)
-        else:
-            con.execute("DELETE FROM einstellung WHERE schluessel = 'schueler_adresse'")
+        if "schueler_adresse" in daten:
+            adresse = (daten.get("schueler_adresse") or "").strip().rstrip("/")
+            if adresse and not re.fullmatch(r"https?://[A-Za-z0-9.-]{1,253}(:\d{1,5})?", adresse):
+                raise Fehler(400, "Bitte eine Adresse wie http://192.168.7.3 oder http://lernbuero angeben.")
+            if adresse:
+                db.einstellung_setzen(con, "schueler_adresse", adresse)
+            else:
+                con.execute("DELETE FROM einstellung WHERE schluessel = 'schueler_adresse'")
+        if "loeschfrist_monate" in daten:
+            monate = _ganzzahl(daten.get("loeschfrist_monate"))
+            if not 1 <= monate <= 60:
+                raise Fehler(400, "Löschfrist: bitte 1 bis 60 Monate.")
+            db.einstellung_setzen(con, "loeschfrist_monate", str(monate))
     api_einstellungen(h, con, {})
 
 
@@ -929,6 +936,99 @@ def api_schuelerplan(h, con, daten, kid, sid):
                     "plan": lernplan.zustand(con, s), "entscheidungen": lernplan.entscheidungen(con, s["id"])})
 
 
+# --- Stufe F: Kalender, Verlauf, Berichte, Archiv ---
+
+def _datum_abfrage(h, name, vorgabe):
+    wert = h.abfrage(name)
+    if not wert:
+        return vorgabe
+    try:
+        return unterrichtstage.datum(wert)
+    except unterrichtstage.TageFehler:
+        raise Fehler(400, "Ungültiges Datum.")
+
+
+def api_kalender(h, con, daten):
+    k = h.konto(con)
+    heute = db.heute()
+    hj_von, hj_bis, hj_name = kalenderansicht.halbjahr(heute)
+    von = _datum_abfrage(h, "von", hj_von)
+    bis = _datum_abfrage(h, "bis", hj_bis)
+    klasse = h.abfrage("klasse")
+    aus = kalenderansicht.ansicht(con, k, von, bis, _ganzzahl(klasse) if klasse else None)
+    aus["heute"] = heute.isoformat()
+    aus["halbjahre"] = []
+    for d in (heute - datetime.timedelta(days=184), heute, heute + datetime.timedelta(days=184)):
+        a, b, n = kalenderansicht.halbjahr(d)
+        if not any(x["von"] == a.isoformat() for x in aus["halbjahre"]):
+            aus["halbjahre"].append({"von": a.isoformat(), "bis": b.isoformat(), "name": n, "aktuell": n == hj_name})
+    h.antwort(200, aus)
+
+
+def api_dienstkalender(h, con, daten):
+    k = h.konto(con)
+    if daten.get("url"):
+        kalender.abo_setzen(con, "dienst", k["id"], daten["url"])
+    elif daten.get("abrufen"):
+        kalender.abrufen(con, "dienst", k["id"])
+    h.antwort(200, {"dienst": kalender.abo_status(con, "dienst", k["id"])})
+
+
+def api_dienstkalender_entfernen(h, con, daten):
+    k = h.konto(con)
+    kalender.abo_entfernen(con, "dienst", k["id"])
+    h.antwort(200, {"dienst": None})
+
+
+def _schueler_zeile(con, kid, sid):
+    s = con.execute("SELECT * FROM schueler WHERE id = ? AND klasse_id = ?", (_ganzzahl(sid), _ganzzahl(kid))).fetchone()
+    if s is None:
+        raise Fehler(404, "Diesen Schüler gibt es in der Klasse nicht.")
+    return s
+
+
+def api_verlauf(h, con, daten, kid, sid):
+    k = h.konto(con)
+    klassen.pruefen(con, _ganzzahl(kid), k, "lesen")
+    h.antwort(200, verlauf.verlauf(con, _schueler_zeile(con, kid, sid), h.abfrage("stand")))
+
+
+def api_bericht(h, con, daten, kid, sid):
+    k = h.konto(con)
+    klassen.pruefen(con, _ganzzahl(kid), k, "lesen")
+    s = _schueler_zeile(con, kid, sid)
+    h.herunterladen(berichte.lernstand(con, s["id"]), "application/pdf", "Lernstand %s %s.pdf" % (s["vorname"], s["nachname"]))
+
+
+def api_berichte_klasse(h, con, daten, kid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    klassen.pruefen(con, kid, k, "lesen")
+    name = con.execute("SELECT name FROM klasse WHERE id = ?", (kid,)).fetchone()["name"]
+    h.herunterladen(berichte.lernstand_klasse(con, kid, nur_aktiv=h.abfrage("alle") != "1"), "application/pdf",
+                    "Lernstand-Berichte %s.pdf" % name)
+
+
+def api_klassenuebersicht(h, con, daten, kid):
+    k = h.konto(con)
+    kid = _ganzzahl(kid)
+    klassen.pruefen(con, kid, k, "lesen")
+    paket = h.abfrage("paket")
+    if paket and not con.execute("SELECT 1 FROM paket WHERE id = ? AND klasse_id = ?", (_ganzzahl(paket), kid)).fetchone():
+        raise Fehler(404, "Dieses Paket gibt es in der Klasse nicht.")
+    name = con.execute("SELECT name FROM klasse WHERE id = ?", (kid,)).fetchone()["name"]
+    h.herunterladen(berichte.klassenuebersicht(con, kid, _ganzzahl(paket) if paket else None), "application/pdf",
+                    "Klassenübersicht %s.pdf" % name)
+
+
+def api_klasse_loeschen(h, con, daten, kid):
+    k = h.konto(con)
+    with db.transaktion(con):
+        anzahl = klassen.loeschen(con, k, _ganzzahl(kid), daten.get("name"))
+    print("Klasse %s geloescht von %s (%d Schueler)" % (kid, k["kuerzel"], anzahl), flush=True)
+    h.antwort(200, {"geloescht": anzahl})
+
+
 ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("GET", r"/api/s/([A-Za-z0-9-]{8,9})/plan", api_schueler_plan),
     ("POST", r"/api/s/([A-Za-z0-9-]{8,9})/plan", _schueler_schritt(SCHUELER_SCHRITTE["plan"])),
@@ -976,6 +1076,14 @@ ROUTEN = [(m, re.compile(p), f) for m, p, f in [
     ("GET", r"/api/diktat", api_diktat_stand),
     ("POST", r"/api/diktat", api_diktat),
     ("GET", r"/api/klassen/(\d+)/matrix", api_matrix),
+    ("GET", r"/api/kalender", api_kalender),
+    ("POST", r"/api/kalender/dienst", api_dienstkalender),
+    ("POST", r"/api/kalender/dienst/entfernen", api_dienstkalender_entfernen),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/verlauf", api_verlauf),
+    ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/bericht\.pdf", api_bericht),
+    ("GET", r"/api/klassen/(\d+)/berichte\.pdf", api_berichte_klasse),
+    ("GET", r"/api/klassen/(\d+)/uebersicht\.pdf", api_klassenuebersicht),
+    ("POST", r"/api/klassen/(\d+)/loeschen", api_klasse_loeschen),
     ("GET", r"/api/klassen/(\d+)/schueler/(\d+)/plan", api_schuelerplan),
     ("GET", r"/api/status", api_status),
     ("POST", r"/api/einrichtung", api_einrichtung),

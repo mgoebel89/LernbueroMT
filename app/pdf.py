@@ -1,11 +1,13 @@
 """Kleiner PDF-Schreiber ohne Zusatzpakete (wie im TrackingDRS): Seiten mit Text (Helvetica aus den PDF-Grundschriften,
-WinAnsi) und Rechtecken. Daraus die QR-Karten der Schueler: A4 hochkant, 2 x 5 Karten im Format 85 x 54 mm.
+WinAnsi), Rechtecken und Linien, A4 hoch oder quer. Daraus die QR-Karten der Schueler (A4 hochkant, 2 x 5 Karten im Format
+85 x 54 mm); Lernstand-Bericht und Klassenuebersicht baut app/berichte.py mit umbrechen().
 """
 from . import klassen, qr
 
 MM = 72 / 25.4
 A4 = (595.28, 841.89)
-ERSATZ = {"✓": "OK", "→": "->", "…": "...", "–": "-", "„": '"', "“": '"', "”": '"', " ": " ", " ": " "}
+A4_QUER = (841.89, 595.28)
+ERSATZ = {"✓": "OK", "→": "->", "…": "...", "–": "-", "„": '"', "“": '"', "”": '"', " ": " ", " ": " ", "✗": "x", "−": "-", "◆": "*"}
 
 # Zeichenbreiten von Helvetica (1/1000 em) fuer die haeufigsten Zeichen; der Rest gilt als 556
 _BREITE = {" ": 278, "-": 333, ".": 278, ",": 278, ":": 278, "/": 278, "(": 333, ")": 333, "i": 222, "l": 222, "j": 222,
@@ -42,9 +44,35 @@ def kuerzen(s, groesse, breite, fett=False):
     return s.rstrip() + "..."
 
 
+def umbrechen(s, groesse, breite, fett=False):
+    """Text in Zeilen, die in breite passen (Absaetze bleiben, zu lange Woerter werden geteilt)."""
+    zeilen = []
+    for absatz in _ersetzen(s).split("\n"):
+        zeile = ""
+        for wort in absatz.split():
+            while textbreite(wort, groesse, fett) > breite and len(wort) > 1:
+                teil = wort
+                while len(teil) > 1 and textbreite(teil, groesse, fett) > breite:
+                    teil = teil[:-1]
+                if zeile:
+                    zeilen.append(zeile)
+                    zeile = ""
+                zeilen.append(teil)
+                wort = wort[len(teil):]
+            probe = (zeile + " " + wort) if zeile else wort
+            if zeile and textbreite(probe, groesse, fett) > breite:
+                zeilen.append(zeile)
+                zeile = wort
+            else:
+                zeile = probe
+        zeilen.append(zeile)
+    return zeilen
+
+
 class Seite:
-    def __init__(self):
+    def __init__(self, groesse=A4):
         self.teile = []
+        self.groesse = groesse
 
     def text(self, x, y, s, groesse=10, fett=False, farbe=(0.11, 0.14, 0.2)):
         self.teile.append(b"BT %.3f %.3f %.3f rg /%s %.1f Tf %.2f %.2f Td (" % (farbe + (b"F2" if fett else b"F1", groesse, x, y))
@@ -52,6 +80,9 @@ class Seite:
 
     def rechteck(self, x, y, b, h, farbe=(0, 0, 0)):
         self.teile.append(b"%.3f %.3f %.3f rg %.3f %.3f %.3f %.3f re f" % (farbe + (x, y, b, h)))
+
+    def linie(self, x1, y1, x2, y2, farbe=(0.8, 0.82, 0.86), staerke=0.6):
+        self.teile.append(b"%.3f %.3f %.3f RG %.2f w [] 0 d %.3f %.3f m %.3f %.3f l S" % (farbe + (staerke, x1, y1, x2, y2)))
 
     def rahmen(self, x, y, b, h, farbe=(0.8, 0.82, 0.86), gestrichelt=True, staerke=0.6):
         strich = b"[3 2] 0 d " if gestrichelt else b"[] 0 d "
@@ -100,8 +131,9 @@ def dokument(seiten, titel="Lernbüro MT"):
     for s in seiten:
         daten = s.inhalt()
         strom = obj(b"<< /Length %d >>\nstream\n" % len(daten) + daten + b"\nendstream")
+        breite, hoehe = getattr(s, "groesse", A4)
         kinder.append(obj(b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.2f %.2f] /Contents %d 0 R "
-                          b"/Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> >>" % (seiten_obj, A4[0], A4[1], strom, f1, f2)))
+                          b"/Resources << /Font << /F1 %d 0 R /F2 %d 0 R >> >> >>" % (seiten_obj, breite, hoehe, strom, f1, f2)))
     objekte[katalog - 1] = b"<< /Type /Catalog /Pages %d 0 R >>" % seiten_obj
     objekte[seiten_obj - 1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(b"%d 0 R" % k for k in kinder), len(kinder))
     info = obj(b"<< /Title (" + _pdf_text(titel) + b") /Producer (Lernbuero MT) >>")

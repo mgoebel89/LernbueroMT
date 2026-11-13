@@ -6,9 +6,16 @@ Zugriff je Klasse:
   admin     (ohne eigene Zuordnung) sieht nur Name und Lehrkraefte der Klasse und darf Lehrkraefte zuordnen,
             damit eine Klasse nie ohne Team bleibt; Schuelerdaten sieht ein Admin nur als Team oder mit Einsicht.
 
+Archiv (Stufe F): Eine archivierte Klasse ist nur noch lesbar. Das Team hat dann die Rechte der Einsicht, nur
+"wieder aktivieren" und "endgueltig loeschen" bleiben ihm (und einem Admin). Die Zugangscodes gelten nicht mehr, kuenftige
+Termine werden abgesagt. Nach der Loeschfrist (Vorgabe 12 Monate ab Archivierung, einstellbar durch einen Admin) weist die
+Seite darauf hin, dass die Klasse geloescht werden soll; geloescht wird nur von Hand, vorher lassen sich die
+Lernstand-Berichte als PDF sichern.
+
 Zugangscode: 8 Zeichen ohne leicht verwechselbare (kein I, L, O, 0, 1), angezeigt als K7Q4-M2XD. Der QR-Code fuehrt
 auf http://<container>/s/K7Q4M2XD. Ein neuer Code macht den alten sofort ungueltig.
 """
+import datetime
 import re
 import secrets
 
@@ -18,6 +25,7 @@ CODE_ZEICHEN = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE = re.compile(r"[A-HJKMNP-Z2-9]{8}")
 ROLLEN = ("team", "einsicht")
 EINSCHAETZER = ("smiley", "zahl")
+LOESCHFRIST_MONATE = 12
 
 
 class KlassenFehler(Exception):
@@ -56,11 +64,13 @@ def code_normalisieren(text):
 
 # --- Zugriff ---
 
-def zugriff(con, klasse_id, konto):
-    zeile = con.execute("SELECT rolle FROM klasse_lehrkraft WHERE klasse_id = ? AND lehrkraft_id = ?",
-                        (klasse_id, konto["id"])).fetchone()
+def zugriff(con, klasse_id, konto, roh=False):
+    """team | einsicht | admin | None. In einer archivierten Klasse hat das Team nur noch Einsicht (roh=True: die
+    eingetragene Rolle, fuer "wieder aktivieren" und "loeschen")."""
+    zeile = con.execute("SELECT kl.rolle, k.archiviert FROM klasse_lehrkraft kl JOIN klasse k ON k.id = kl.klasse_id "
+                        "WHERE kl.klasse_id = ? AND kl.lehrkraft_id = ?", (klasse_id, konto["id"])).fetchone()
     if zeile:
-        return zeile["rolle"]
+        return "einsicht" if zeile["archiviert"] and not roh else zeile["rolle"]
     if konto["rolle"] == "admin":
         return "admin"
     return None
@@ -74,13 +84,35 @@ def _klasse(con, klasse_id):
 
 
 def pruefen(con, klasse_id, konto, recht="lesen"):
-    """recht: lesen (Team, Einsicht) | aendern (Team) | zuordnen (Team, Admin). Rueckgabe: Rolle."""
-    _klasse(con, klasse_id)
-    rolle = zugriff(con, klasse_id, konto)
-    erlaubt = {"lesen": ("team", "einsicht"), "aendern": ("team",), "zuordnen": ("team", "admin")}[recht]
+    """recht: lesen (Team, Einsicht) | aendern (Team) | zuordnen (Team, Admin) | archiv (eingetragenes Team, Admin:
+    archivieren, wieder aktivieren, loeschen). Rueckgabe: Rolle."""
+    k = _klasse(con, klasse_id)
+    rolle = zugriff(con, klasse_id, konto, roh=recht in ("archiv", "zuordnen"))
+    erlaubt = {"lesen": ("team", "einsicht"), "aendern": ("team",), "zuordnen": ("team", "admin"), "archiv": ("team", "admin")}[recht]
     if rolle not in erlaubt:
+        if k["archiviert"] and recht == "aendern" and zugriff(con, klasse_id, konto, roh=True) == "team":
+            raise KeinZugriff("Die Klasse ist archiviert und nur noch lesbar.")
         raise KeinZugriff("Dafür fehlt Ihnen das Recht in dieser Klasse.")
     return rolle
+
+
+def loeschfrist_monate(con):
+    try:
+        return max(1, min(60, int(db.einstellung(con, "loeschfrist_monate", LOESCHFRIST_MONATE))))
+    except (TypeError, ValueError):
+        return LOESCHFRIST_MONATE
+
+
+def loeschen_ab(con, archiviert_am):
+    """Tag, ab dem eine archivierte Klasse geloescht werden soll (ISO-Datum) oder None."""
+    if not archiviert_am:
+        return None
+    d = datetime.date.fromisoformat(archiviert_am[:10])
+    monat = d.month - 1 + loeschfrist_monate(con)
+    jahr, monat = d.year + monat // 12, monat % 12 + 1
+    schalt = jahr % 4 == 0 and (jahr % 100 != 0 or jahr % 400 == 0)
+    letzter = [31, 29 if schalt else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monat - 1]
+    return datetime.date(jahr, monat, min(d.day, letzter)).isoformat()
 
 
 def _lehrkraefte(con, klasse_id):
@@ -92,8 +124,11 @@ def _lehrkraefte(con, klasse_id):
 def _klasse_daten(con, zeile, rolle):
     lk = _lehrkraefte(con, zeile["id"])
     anzahl = con.execute("SELECT COUNT(*) FROM schueler WHERE klasse_id = ? AND aktiv = 1", (zeile["id"],)).fetchone()[0]
+    ab = loeschen_ab(con, zeile["archiviert_am"]) if zeile["archiviert"] else None
     return {"id": zeile["id"], "name": zeile["name"], "schuljahr": zeile["schuljahr"], "moodle_kurs": zeile["moodle_kurs"],
             "einschaetzer": zeile["einschaetzer"], "archiviert": bool(zeile["archiviert"]), "rolle": rolle,
+            "archiviert_am": zeile["archiviert_am"] if zeile["archiviert"] else None, "loeschen_ab": ab,
+            "loeschen_faellig": bool(ab and ab <= db.heute().isoformat()),
             "team": lk["team"], "einsicht": lk["einsicht"], "anzahl_schueler": anzahl}
 
 
@@ -106,7 +141,8 @@ def liste(con, konto, archiv=False):
         zeilen = con.execute("SELECT k.* FROM klasse k JOIN klasse_lehrkraft kl ON kl.klasse_id = k.id "
                              "WHERE kl.lehrkraft_id = ? AND k.archiviert = ? ORDER BY k.schuljahr DESC, k.name",
                              (konto["id"], 1 if archiv else 0))
-    return [_klasse_daten(con, z, zugriff(con, z["id"], konto)) for z in zeilen.fetchall()]
+    return [dict(_klasse_daten(con, z, zugriff(con, z["id"], konto)), darf_archiv=zugriff(con, z["id"], konto, roh=True) in ("team", "admin"))
+            for z in zeilen.fetchall()]
 
 
 def anlegen(con, konto, name, schuljahr="", moodle_kurs=""):
@@ -122,7 +158,17 @@ def anlegen(con, konto, name, schuljahr="", moodle_kurs=""):
 
 
 def aendern(con, konto, klasse_id, daten):
-    pruefen(con, klasse_id, konto, "aendern")
+    """Name, Schuljahr, Moodle-Kurs, Einschaetzer, archiviert. Eine archivierte Klasse laesst sich nur wieder aktivieren."""
+    k = _klasse(con, klasse_id)
+    if k["archiviert"]:
+        pruefen(con, klasse_id, konto, "archiv")
+        if daten.get("archiviert", True):
+            raise KlassenFehler("Die Klasse ist archiviert. Bitte sie zuerst wieder aktivieren.")
+        daten = {"archiviert": False}
+    elif set(daten) == {"archiviert"}:
+        pruefen(con, klasse_id, konto, "archiv")
+    else:
+        pruefen(con, klasse_id, konto, "aendern")
     felder = {}
     if "name" in daten:
         felder["name"] = _text(daten["name"], "Name der Klasse", 2, 40)
@@ -134,13 +180,43 @@ def aendern(con, konto, klasse_id, daten):
         if daten["einschaetzer"] not in EINSCHAETZER:
             raise KlassenFehler("Unbekannte Darstellung.")
         felder["einschaetzer"] = daten["einschaetzer"]
-    if "archiviert" in daten:
+    if "archiviert" in daten and bool(daten["archiviert"]) != bool(k["archiviert"]):
         felder["archiviert"] = 1 if daten["archiviert"] else 0
+        if daten["archiviert"]:
+            _archivieren(con, konto, klasse_id)
     for spalte, wert in felder.items():
         con.execute("UPDATE klasse SET %s = ? WHERE id = ?" % spalte, (wert, klasse_id))
+    if "archiviert" in felder:
+        con.execute("UPDATE klasse SET archiviert_am = ? WHERE id = ?", (db.jetzt() if felder["archiviert"] else None, klasse_id))
     if felder:
         db.ereignis(con, klasse_id, None, "lehrkraft", konto["kuerzel"], "klasse_geaendert", **felder)
     return holen(con, konto, klasse_id)
+
+
+def _archivieren(con, konto, klasse_id):
+    """Beim Archivieren: kuenftige Termine absagen, offene Hilfe-Meldungen schliessen (Schueler kommen nicht mehr hinein)."""
+    heute = db.heute().isoformat()
+    jetzt = db.jetzt()
+    ids = [z[0] for z in con.execute("SELECT t.id FROM termin t JOIN zeitfenster z ON z.id = t.zeitfenster_id "
+                                     "WHERE z.klasse_id = ? AND t.abgesagt IS NULL AND t.datum >= ?", (klasse_id, heute))]
+    con.executemany("UPDATE termin SET abgesagt = ?, abgesagt_von = ? WHERE id = ?", [(jetzt, "lehrkraft:" + konto["kuerzel"], t) for t in ids])
+    con.executemany("UPDATE versuch SET termin_id = NULL WHERE termin_id = ?", [(t,) for t in ids])
+    con.execute("UPDATE hilfe SET ende = ?, ende_art = 'zurueckgezogen' WHERE klasse_id = ? AND ende IS NULL", (jetzt, klasse_id))
+
+
+def loeschen(con, konto, klasse_id, bestaetigung):
+    """Archivierte Klasse endgueltig loeschen: Schueler, Plaene, Rueckmeldungen, Pakete, Ereignisse der Klasse.
+    bestaetigung: der Name der Klasse (gegen Versehen). Zurueck bleibt ein Ereignis ohne Schuelerdaten."""
+    k = _klasse(con, klasse_id)
+    pruefen(con, klasse_id, konto, "archiv")
+    if not k["archiviert"]:
+        raise KlassenFehler("Löschen geht nur für archivierte Klassen.")
+    if re.sub(r"\s+", " ", str(bestaetigung or "")).strip().lower() != k["name"].strip().lower():
+        raise KlassenFehler("Bitte zur Bestätigung den Namen der Klasse eingeben: %s" % k["name"])
+    anzahl = con.execute("SELECT COUNT(*) FROM schueler WHERE klasse_id = ?", (klasse_id,)).fetchone()[0]
+    con.execute("DELETE FROM klasse WHERE id = ?", (klasse_id,))
+    db.ereignis(con, None, None, "lehrkraft", konto["kuerzel"], "klasse_geloescht", name=k["name"], schuljahr=k["schuljahr"], schueler=anzahl)
+    return anzahl
 
 
 def lehrkraft_setzen(con, konto, klasse_id, lehrkraft_id, rolle):
@@ -171,6 +247,8 @@ def holen(con, konto, klasse_id):
     if rolle is None:
         raise KeinZugriff("Diese Klasse gehört nicht zu Ihren Klassen.")
     daten = _klasse_daten(con, zeile, rolle)
+    daten["darf_archiv"] = zugriff(con, klasse_id, konto, roh=True) in ("team", "admin")
+    daten["loeschfrist_monate"] = loeschfrist_monate(con)
     if rolle in ("team", "einsicht"):
         daten["schueler"] = [_schueler_daten(z, mit_code=rolle == "team") for z in con.execute(
             "SELECT * FROM schueler WHERE klasse_id = ? ORDER BY aktiv DESC, nachname, vorname", (klasse_id,))]

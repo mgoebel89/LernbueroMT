@@ -470,3 +470,64 @@ table.lp.kompakt col.c-auf { width: 40%; }
 .vorher-block { padding: 8px 10px; border: 1px solid var(--blau-mittel); border-radius: 10px 4px 4px 4px; background: var(--blau-hell); }
 .kann-kacheln .kk { justify-content: start; grid-template-columns: minmax(0, 1fr); }
 .kann-kacheln .kk .ks { white-space: normal; text-align: left; }
+/* Stufe F: Verlauf mit Schatten, Kennzahlen, Marken */
+.geist { position: absolute; left: 0; right: 0; top: 5px; height: 3px; background: var(--leise); opacity: .55; pointer-events: none; }
+.geist.a { left: 5px; border-radius: 2px 0 0 2px; } .geist.e { right: 5px; border-radius: 0 2px 2px 0; } .geist.a.e { border-radius: 2px; }
+.m-geist { width: 14px; height: 3px; border-radius: 2px; background: var(--leise); opacity: .55; display: inline-block; }
+.d-tag { font-size: .6rem; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; vertical-align: 1px; }
+.d-tag.neu { background: var(--gruen); color: #1d2433; }
+.d-tag.weg { background: var(--knopf); color: var(--leise); box-shadow: inset 0 0 0 1px var(--linie-stark); }
+.d-tag.versch { background: var(--gelb); color: #1d2433; }
+.d-tag.aus { color: var(--leise); box-shadow: inset 0 0 0 1px var(--leise); }
+.d-tag.emp { background: #fdecc8; color: var(--text); }
+.d-tag.team { background: #efe7f6; color: var(--lila); }
+.kennzahlen { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.kz-kachel { border: 1px solid var(--linie); border-radius: 12px 4px 4px 4px; padding: 8px 10px; display: grid; gap: 2px; background: var(--karte); }
+.kz-kachel b { font-size: 1.25rem; }
+.verlauf-liste > div { align-items: baseline; }
+.slot.dienst { background: var(--knopf); color: var(--leise); }
+.archiv-banner { display: grid; gap: 8px; }
+/* Stufe F: Kalender */
+.schalter { display: inline-flex; border: 1px solid var(--linie-stark); border-radius: var(--r); overflow: hidden; }
+.schalter button { border: none; border-radius: 0; padding: 6px 12px; }
+.schalter button + button { border-left: 1px solid var(--linie-stark); }
+.schalter button.an { background: var(--blau); color: #fff; }
+.kal-kopf { gap: 10px 16px; }
+.kal-navi { display: flex; align-items: center; gap: 6px; }
+.kal-navi b { min-width: 150px; text-align: center; }
+.kal-ebenen { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.fchip { display: inline-flex; align-items: center; gap: 6px; font-size: .74rem; padding: 3px 9px; border-radius: 999px; }
+.fchip i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.fchip.aus { opacity: .45; text-decoration: line-through; }
+.fchip .f-dienst { background: var(--karte); border: 1px solid var(--linie-stark); }
+.fchip .f-unterricht { background: var(--blau-hell); border: 1px solid var(--blau-mittel); }
+.fchip .f-sprech { border: 1px solid var(--blau-mittel); }
+.fchip .f-pruefung { border: 1.5px solid var(--blau); }
+.fchip .f-frist { background: var(--rot); }
+.fchip .f-gn { background: var(--lila); }
+.fchip .f-ferien { background: repeating-linear-gradient(135deg, transparent 0 2px, var(--leise) 2px 3px); border: 1px solid var(--linie-stark); }
+table.kal { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .78rem; table-layout: fixed; min-width: 640px; }
+.kal th { font-size: .64rem; text-transform: uppercase; letter-spacing: .07em; color: var(--leise); font-weight: 700; padding: 6px; text-align: left; border-bottom: 1px solid var(--linie); }
+.kal th.kw { width: 52px; }
+.kal td { border-bottom: 1px solid var(--linie); border-left: 1px solid var(--linie); vertical-align: top; padding: 4px 5px 5px; height: 70px; min-width: 0; }
+.kal.woche td { height: 180px; }
+.kal td.kw { font-family: var(--mono); color: var(--leise); font-size: .66rem; border-left: none; }
+.kal td.ut { background: var(--blau-hell); }
+.kal td.fer { background: repeating-linear-gradient(135deg, transparent 0 5px, var(--linie) 5px 7px); }
+.kal td.ut.fer { background: repeating-linear-gradient(135deg, var(--blau-hell) 0 5px, var(--linie) 5px 7px); }
+.kal td.heute { box-shadow: inset 0 0 0 2px var(--blau); }
+.kal td.ausser { opacity: .45; }
+.kal tr.kal-monat td { height: auto; background: var(--knopf); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--leise); border-left: none; padding: 6px 8px; }
+.kal .tagnr { font-family: var(--mono); font-size: .64rem; color: var(--leise); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev { display: block; border-radius: 4px; padding: 1px 4px; margin-top: 2px; font-size: .66rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+.kal.woche .ev { white-space: normal; }
+.ev-details { display: grid; font-weight: 400; color: var(--text); margin-top: 2px; }
+.ev.dienst { background: var(--karte); color: var(--text); border: 1px solid var(--linie-stark); }
+.ev.fst { background: var(--rot); color: #fff; }   /* nicht .frist: die Klasse ist global das rote F im Raster */
+.ev.gn { background: var(--lila); color: #fff; }
+.ev.sz { border: 1px solid var(--blau-mittel); color: var(--blau); background: var(--karte); }
+.ev.sz.n { border: 1.5px solid var(--blau); }
+.ev.aus { background: var(--karte); color: var(--leise); border: 1px dashed var(--leise); }
+.ev.ohne { background: #fdf1dc; color: var(--text); }
+.ev.info { background: var(--karte); color: var(--blau); border-left: 3px solid var(--blau); }
+@media (max-width: 760px) { .kal-ebenen { margin-left: 0; } .kal-navi b { min-width: 0; } }

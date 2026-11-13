@@ -17,12 +17,16 @@ kann bis zum Vortag selbst absagen. Andere Schueler sieht er nur als "belegt" (e
 Gespraechstermin: Aus "Zu pruefen" traegt die Lehrkraft dem Schueler einen Termin aus ihrer eigenen Sprechzeit ein
 ("Gespraech noetig", mit Hinweis). Das ist ein Pflichttermin: absagen oder verlegen koennen nur Lehrkraefte; er zaehlt
 nicht als der eine offene Feedbacktermin des Schuelers.
+
+Dienstkalender (Stufe F): Ein Termin mit Uhrzeit im Dienstkalender der Lehrkraft sperrt die Plaetze ihrer Zeitfenster,
+mit denen er sich ueberschneidet (grau, nicht buchbar). Schon gebuchte Termine bleiben und werden als Ueberschneidung
+gezeigt. Beim Anlegen eines Zeitfensters warnt das Tool vor Ueberschneidungen.
 """
 import datetime
 import json
 import re
 
-from . import db, klassen, unterrichtstage as ut
+from . import db, kalender, klassen, unterrichtstage as ut
 
 TAG = datetime.timedelta(days=1)
 ARTEN = {"sprech": "Sprechzeit", "pruefung": "Prüfungszeit"}
@@ -199,6 +203,22 @@ def _ueberschneidungen(con, konto, neu, ausser=None):
     return warnungen
 
 
+def _dienst_warnung(con, konto, z, tage):
+    """Warnung, wenn Termine des eigenen Dienstkalenders in das neue Zeitfenster fallen (Tage mit Unterricht)."""
+    treffer = []
+    for d, t in tage:
+        if t is None or t["status"] != "unterricht":
+            continue
+        titel = kalender.kollision(z["von"], z["bis"], kalender.dienst_belegt(con, konto["id"], d))
+        if titel:
+            treffer.append((d, titel))
+    if not treffer:
+        return None
+    d, titel = treffer[0]
+    return "Überschneidung mit Ihrem Dienstkalender: %s am %s%s. Diese Plätze sind nicht buchbar." % (
+        titel, ut.TAGE[d.weekday()] + " " + d.strftime("%d.%m."), " und an %d weiteren Tagen" % (len(treffer) - 1) if len(treffer) > 1 else "")
+
+
 def _fenster_pruefen(d):
     art = d.get("art")
     if art not in ARTEN:
@@ -251,6 +271,9 @@ def zeitfenster_anlegen(con, konto, klasse_id, d):
         warnungen.append("An keinem dieser Tage hat die Klasse Unterricht mit Lehrkraft: dort entstehen keine Termine.")
     elif any(t is None for _, t in tage):
         warnungen.append("An einigen Tagen hat die Klasse keinen Unterricht: dort entstehen keine Termine.")
+    dienst = _dienst_warnung(con, konto, z, tage)
+    if dienst:
+        warnungen.append(dienst)
     db.ereignis(con, klasse_id, None, "lehrkraft", konto["kuerzel"], "zeitfenster_angelegt", zeitfenster_id=zid, fensterart=w["art"])
     return {"zeitfenster": _fenster_daten(con, z), "warnungen": warnungen}
 
@@ -315,15 +338,19 @@ def belegung(con, konto, klasse_id, von=None, tage=21):
     bis = von + tage * TAG
     aus = []
     for z in con.execute("SELECT * FROM zeitfenster WHERE klasse_id = ? AND aktiv = 1", (klasse_id,)).fetchall():
+        eigen = z["lehrkraft_id"] == konto["id"]
         for d, t in fenstertage(con, z, von, bis):
             if t is None:
                 continue
             gebucht = _gebucht(con, z["id"], d.isoformat())
+            belegt = kalender.dienst_belegt(con, z["lehrkraft_id"], d)
             zeilen = []
             for i, (b, e) in enumerate(plaetze(z)):
                 g = gebucht.get(b)
+                dienst = kalender.kollision(b, e, belegt)
                 zeilen.append({"beginn": b, "ende": e, "termin": {"id": g["id"], "name": "%s %s" % (g["vorname"], g["nachname"]),
-                               "schueler_id": g["schueler_id"], "art": g["art"], "anlass": _anlass_text(con, g)} if g else None})
+                               "schueler_id": g["schueler_id"], "art": g["art"], "anlass": _anlass_text(con, g)} if g else None,
+                               "dienst": (dienst if eigen else "Dienstkalender") if dienst else None})
                 if z["puffer"] and i < len(plaetze(z)) - 1:
                     zeilen.append({"beginn": e, "ende": _hhmm(_min(e) + z["puffer"]), "puffer": True})
             aus.append({"datum": d.isoformat(), "tag": t["tag"], "status": t["status"], "grund": t["grund"],
@@ -338,7 +365,7 @@ def termine_heute(con, konto, heute=None):
     aus = []
     for t in con.execute("SELECT t.*, s.vorname, s.nachname, s.klasse_id, k.name AS klasse, z.art AS fensterart FROM termin t "
                          "JOIN zeitfenster z ON z.id = t.zeitfenster_id JOIN schueler s ON s.id = t.schueler_id JOIN klasse k ON k.id = s.klasse_id "
-                         "WHERE z.lehrkraft_id = ? AND t.datum = ? AND t.abgesagt IS NULL ORDER BY t.beginn", (konto["id"], heute)):
+                         "WHERE z.lehrkraft_id = ? AND t.datum = ? AND t.abgesagt IS NULL AND k.archiviert = 0 ORDER BY t.beginn", (konto["id"], heute)):
         aus.append({"id": t["id"], "beginn": t["beginn"], "ende": t["ende"], "art": t["art"], "schueler_id": t["schueler_id"],
                     "name": "%s %s" % (t["vorname"], t["nachname"]), "klasse_id": t["klasse_id"], "klasse": t["klasse"],
                     "anlass": _anlass_text(con, t), "anlass_aufgabe_id": t["anlass_aufgabe_id"], "nachweis_id": t["nachweis_id"],
@@ -372,7 +399,8 @@ def freie_plaetze(con, schueler, art="feedback", heute=None, jetzt_hhmm=None, le
             if t is None or t["status"] != "unterricht":
                 continue
             gebucht = _gebucht(con, z["id"], d.isoformat())
-            frei = [b for b, _ in plaetze(z) if b not in gebucht and (d > heute or b > jetzt_hhmm)]
+            belegt = kalender.dienst_belegt(con, z["lehrkraft_id"], d)
+            frei = [b for b, e in plaetze(z) if b not in gebucht and (d > heute or b > jetzt_hhmm) and not kalender.kollision(b, e, belegt)]
             if frei:
                 aus.append({"datum": d.isoformat(), "tag": t["tag"], "zeitfenster_id": z["id"], "lehrkraft": l[0], "dauer": z["dauer"], "plaetze": frei})
     aus.sort(key=lambda x: (x["datum"], x["plaetze"][0]))
@@ -431,7 +459,7 @@ def buchen(con, schueler, zeitfenster_id, datum, beginn, art="feedback", anlass=
     if art == "feedback" and con.execute("SELECT 1 FROM termin WHERE schueler_id = ? AND art = 'feedback' AND pflicht = 0 AND abgesagt IS NULL AND (datum > ? OR "
                                          "(datum = ? AND ende > ?))", (schueler["id"], heute.isoformat(), heute.isoformat(), jetzt_hhmm)).fetchone():
         raise TerminFehler("Du hast schon einen offenen Feedbacktermin. Sage ihn ab, wenn du einen anderen willst.")
-    if beginn in _gebucht(con, z["id"], d.isoformat()):
+    if beginn in _gebucht(con, z["id"], d.isoformat()) or kalender.kollision(platz[0], platz[1], kalender.dienst_belegt(con, z["lehrkraft_id"], d)):
         raise TerminFehler("Dieser Platz ist gerade vergeben worden. Bitte einen anderen wählen.")
     aufgabe_id = paket_id = None
     text = re.sub(r"\s+", " ", str(anlass.get("text") or "")).strip()[:200]
@@ -525,6 +553,9 @@ def gespraech_eintragen(con, konto, meldung_id, zeitfenster_id, datum, beginn, h
         raise TerminFehler("Diesen Platz gibt es nicht.")
     if beginn in _gebucht(con, z["id"], d.isoformat()):
         raise TerminFehler("Dieser Platz ist schon vergeben.")
+    dienst = kalender.kollision(platz[0], platz[1], kalender.dienst_belegt(con, konto["id"], d))
+    if dienst:
+        raise TerminFehler("Zu dieser Zeit steht in Ihrem Dienstkalender: %s." % dienst)
     hinweis = re.sub(r"\s+", " ", str(hinweis or "")).strip()[:200]
     tid = con.execute("INSERT INTO termin (zeitfenster_id, schueler_id, datum, beginn, ende, art, anlass_aufgabe_id, anlass_paket_id, "
                       "anlass_text, gebucht, pflicht, meldung_id, hinweis) "

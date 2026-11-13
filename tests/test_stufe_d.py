@@ -115,12 +115,15 @@ class Rueckmeldung(Basis):
         zz = self.zeile(self.z1)
         self.assertEqual((zz["wirksam"], zz["empfehlungen"][0]["verbindlich"]), ("2026-11-19", True))
         self.assertEqual(next(k for k in z["pakete"][0]["kann"] if k["id"] == self.k2)["lehrkraft"], 1)
+        # "eingeplant" zaehlt Tage ab der Freigabe (echte Uhrzeit): ein Donnerstag nach dem heutigen Tag
+        tag = max(HEUTE, D.fromisoformat(db.jetzt()[:10]))
+        tag = (tag + datetime.timedelta(days=(3 - tag.weekday()) % 7 or 7)).isoformat()
         with db.transaktion(self.con):
-            lernplan.planen(self.con, self.lena, self.z1, hinzu=["2026-11-09"], heute=HEUTE)
+            lernplan.planen(self.con, self.lena, self.z1, hinzu=[tag], heute=HEUTE)
             rm.gelesen(self.con, self.lena)
         self.assertEqual(rm.fuer_schueler(self.con, self.lena)["ungelesen"], 0)
         lk = rm.fuer_lehrkraft(self.con, self.kl, self.lena["id"])      # Einsicht sieht Freigegebenes mit Urheber
-        self.assertEqual(lk["empfehlungen"][0]["eingeplant"], ["2026-11-09"])
+        self.assertEqual(lk["empfehlungen"][0]["eingeplant"], [tag])
         self.assertFalse(lk["darf"])
         m = lernplan.matrix(self.con, self.k, heute=HEUTE)
         self.assertEqual(m["zeilen"][0]["empfehlungen"], 1)

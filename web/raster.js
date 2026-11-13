@@ -52,7 +52,8 @@ const Raster = (() => {
   const istKompakt = () => !!(window.matchMedia && window.matchMedia('(max-width: 800px)').matches);
 
   // z: Zustand von /api/s/<code>/plan; o: { bearbeitbar, modus: 'markieren' | 'planen', planen(aufgabe_id, hinzu, weg),
-  //   markieren(aufgabe_id, datum, farbe|null), waehlen(zeile, gruppe), oeffnen(zeile, gruppe), nachweis(n), team(bezug), kompakt }
+  //   markieren(aufgabe_id, datum, farbe|null), waehlen(zeile, gruppe), oeffnen(zeile, gruppe), nachweis(n), team(bezug), kompakt,
+  //   schatten: {aufgabe_id: [Tage]} = Plan von damals (grauer Strich), marken: {aufgabe_id: [[Klasse, Text]]} (Verlauf, nur lesen) }
   function zeichnen(z, o = {}) {
     const kompakt = o.kompakt !== undefined ? o.kompakt : istKompakt();
     const planModus = o.bearbeitbar && o.modus === 'planen';
@@ -102,7 +103,8 @@ const Raster = (() => {
     }
     bauen();
     return el('div', { class: 'stapel', style: 'gap:8px' },
-      el('div', { class: 'legende' }, el('span', {}, el('i', { class: 'm-bal' }), 'geplant'),
+      el('div', { class: 'legende' }, o.schatten ? el('span', {}, el('i', { class: 'm-geist' }), 'Plan von damals') : null,
+        el('span', {}, el('i', { class: 'm-bal' }), o.schatten ? 'Plan jetzt' : 'geplant'),
         FARBEN.map(f => el('span', {}, el('i', { class: 'm-bal f-' + f }), kompakt ? { g: 'im Zeitplan', y: 'knapp', r: 'nicht im Zeitplan' }[f] : FARBTEXT[f])),
         el('span', {}, el('i', { class: 'm-bal f-g ungeplant' }), 'ungeplant'),
         el('span', {}, el('span', { class: 'frist', style: 'position:static', text: 'F' }), 'Frist'), el('span', {}, el('i', { class: 'm-aus' }), 'kein Unterricht'),
@@ -173,9 +175,12 @@ const Raster = (() => {
               : r.art === 'pflicht' ? el('span', { class: 'art', text: 'Pflicht' }) : r.art === 'zusatz' ? el('span', { class: 'art', text: r.zusatz_art === 'vertiefung' ? 'Vertiefung' : 'Wiederholung' }) : null),
           kompakt ? null : el('td', { class: 'st' }, r.gewaehlt ? statusChip(r) : null, r.ampel && r.gewaehlt ? el('span', { class: 'ampel a-' + r.ampel, title: 'letzte Ampel' }) : null,
             knopf ? ' ' : null, knopf, r.plant_nach_frist && r.gewaehlt ? el('span', { class: 'chip rot klein', text: 'nach der Frist' }) : null, empfehlungChip(r),
-            r.team && r.team.bereich === 'aufgabe' ? teamChip(r.team) : null),
+            r.team && r.team.bereich === 'aufgabe' ? teamChip(r.team) : null,
+            o.marken ? (o.marken[r.id] || []).map(m => el('span', { class: 'd-tag ' + m[0], text: m[1] })) : null),
           tage.map((t, i) => {
             const balken = j => j >= 0 && j < tage.length && (r.plan.includes(tage[j].datum) || !!r.ist[tage[j].datum]);
+            const alt = (o.schatten && o.schatten[r.id]) || [];
+            const geist = j => j >= 0 && j < tage.length && alt.includes(tage[j].datum);
             const geplant = r.plan.includes(t.datum);
             const kann = planbar && plant(t) && t.datum >= z.heute;
             const mk = markbar && plant(t) && t.datum <= z.heute && t.datum >= markAb;
@@ -183,6 +188,7 @@ const Raster = (() => {
             return el('td', { class: zellKlasse(t, z) + (kann ? ' kann' : '') + (mk ? ' mk' : ''),
               'data-datum': kann || mk ? t.datum : null, 'data-farbe': mk ? farbe || '' : null, 'data-geplant': geplant ? '1' : null,
               title: farbe ? FARBTEXT[farbe] + (geplant ? '' : ' (ungeplant)') + (farbe === 'r' && r.probleme && r.probleme[t.datum] ? ' · ' + r.probleme[t.datum].text : '') : t.grund || null },
+              geist(i) ? el('span', { class: 'geist' + (geist(i - 1) ? '' : ' a') + (geist(i + 1) ? '' : ' e') }) : null,
               balken(i) ? el('span', { class: 'bal' + (balken(i - 1) ? '' : ' a') + (balken(i + 1) ? '' : ' e') + (farbe ? ' f-' + farbe : '') + (farbe && !geplant ? ' ungeplant' : '') }) : null,
               r.wirksam === t.datum && r.gewaehlt ? el('span', { class: 'frist', text: 'F' }) : null);
           }));

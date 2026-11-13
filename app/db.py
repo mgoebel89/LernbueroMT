@@ -442,6 +442,12 @@ MIGRATIONEN = [
     DROP TABLE kann_einschaetzung;
     ALTER TABLE kann_einschaetzung_neu RENAME TO kann_einschaetzung
     """),
+    # 10: Archiv (Stufe F): seit wann eine Klasse archiviert ist; daraus die Loeschfrist. Schon archivierte Klassen
+    # zaehlen ab jetzt.
+    """
+    ALTER TABLE klasse ADD COLUMN archiviert_am TEXT;
+    UPDATE klasse SET archiviert_am = strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime') WHERE archiviert = 1
+    """,
 ]
 
 

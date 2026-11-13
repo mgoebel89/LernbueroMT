@@ -3,6 +3,8 @@
 // Stufe C: Klassenmatrix, Schuelerplan. Stufe D: "Jetzt" (Hilfe-Reihe, Termine heute, Zu pruefen), Rueckmeldungen und
 // Empfehlungen (rueck.js), Sprech- und Pruefungszeiten (zeitfenster.js). Stufe E: Bereit-Liste der Gelingensnachweise,
 // "in Moodle freigeschaltet", Ergebnis ueber das Rueckmeldungsfenster, Reiter "Gelingensnachweise" auf der Schuelerseite.
+// Stufe F: Kalender (kalender.js), Verlauf mit Schatten, Kennzahlen und Entscheidungsliste, Lernstand-Bericht und
+// Klassenuebersicht als PDF, Archiv (nur lesbar, wieder aktivieren, endgueltig loeschen nach der Loeschfrist).
 'use strict';
 const { el } = L;
 const S = { konto: null, lehrkraefte: null, update: null, zu_pruefen: 0, nachweise: 0 };
@@ -12,6 +14,7 @@ const NAV = [
   { a: 'pruefen', text: 'Zu prüfen', s: 'pruefen' },
   { a: 'nachweise', text: 'Nachweise', s: 'gn' },
   { a: 'zeitfenster', text: 'Zeitfenster', s: 'uhr' },
+  { a: 'kalender', text: 'Kalender', s: 'kalender' },
   { a: 'klassen', text: 'Klassen', s: 'klassen' },
   { a: 'pakete', text: 'Pakete', s: 'pakete' },
   { a: 'archiv', text: 'Archiv', s: 'archiv' },
@@ -100,11 +103,12 @@ function navZahl(n, gn) {
 async function zeigen() {
   const [ansicht, id, id2] = (location.hash.slice(1) || 'uebersicht').split('/');
   const nav = ansicht === 'klasse' ? 'klassen' : ansicht === 'paket' ? 'pakete' : ansicht === 'schueler' ? 'uebersicht' : ansicht;
-  const [, , , reiter] = (location.hash.slice(1) || '').split('/');
+  const [, , , reiter, stand] = (location.hash.slice(1) || '').split('/');
   document.querySelectorAll('nav.seite a').forEach(a => a.classList.toggle('an', a.dataset.ansicht === nav));
   try {
     if (ansicht === 'uebersicht') await uebersichtZeigen(Number(id) || null, Number(id2) || null);
-    else if (ansicht === 'schueler') await schuelerZeigen(Number(id), Number(id2), reiter || 'plan');
+    else if (ansicht === 'schueler') await schuelerZeigen(Number(id), Number(id2), reiter || 'plan', stand || null);
+    else if (ansicht === 'kalender') await Kalender.seite();
     else if (ansicht === 'pruefen') await pruefenZeigen();
     else if (ansicht === 'nachweise') await nachweiseZeigen();
     else if (ansicht === 'zeitfenster') await Zeiten.seite(Number(id) || null);
@@ -273,7 +277,9 @@ async function uebersichtZeigen(kid, pid) {
   };
   const matrix = !m.paket ? el('div', { class: 'leer' }, 'Noch kein Paket für ' + k.name + '. ', el('a', { href: '#pakete/' + k.id, text: 'Paket anlegen' }))
     : el('div', { class: 'karte stapel' },
-      el('div', { class: 'zeile' }, el('h3', { text: k.name + ' · ' + m.paket.titel })),
+      el('div', { class: 'zeile' }, el('h3', { text: k.name + ' · ' + m.paket.titel }),
+        el('span', { class: 'rechts' }, el('button', { type: 'button', class: 'klein', onclick: () => pdfLaden('/api/klassen/' + k.id + '/uebersicht.pdf?paket=' + m.paket.id) },
+          L.symbol('laden'), 'Klassenübersicht (PDF)'))),
       el('div', { class: 'legende' }, Object.keys(MZ).map(s => el('span', {}, el('i', { class: 'mz ' + s, style: 'min-width:20px;height:16px', text: MZ[s] }), MZ_TEXT[s])),
         el('span', {}, el('i', { class: 'mz fehlt', style: 'min-width:20px;height:16px', text: '?' }), 'Wahl fehlt'),
         el('span', {}, el('i', { class: 'mz geplant ueber', style: 'min-width:20px;height:16px' }), 'Frist überschritten'),
@@ -348,7 +354,49 @@ async function pruefenZeigen() {
         el('button', { type: 'button', class: 'klein', onclick: () => Rueck.oeffnen({ schueler: e.schueler_id, rueckmeldung: e.id, danach: zeigen }) }, 'weiter')))) : null);
 }
 
-async function schuelerZeigen(kid, sid, reiter) {
+async function pdfLaden(url) {
+  L.meldung('PDF wird erstellt …');
+  try { await L.herunterladen(url); } catch (e) { L.meldung(e.message, true); }
+}
+
+function kennzahlKachel(titel, wert, text) {
+  return el('div', { class: 'kz-kachel' }, el('div', { class: 'etikett', text: titel }), el('b', { text: wert }), text ? el('div', { class: 'leise klein', text }) : null);
+}
+
+function verlaufTeile(d, v, kid, sid) {
+  const k = v.kennzahlen;
+  const basis = '#schueler/' + kid + '/' + sid + '/plan/';
+  const wahl = el('select', { 'aria-label': 'Vergleichen mit dem Stand am', onchange: ev => { location.hash = basis + ev.target.value; } },
+    v.optionen.map(o => el('option', { value: o.datum, text: L.tag(o.datum, true) + (o.beginn ? ' (Beginn)' : '') })));
+  if (v.stand) wahl.value = v.stand;
+  const p = k.plan;
+  const kacheln = el('div', { class: 'kennzahlen' },
+    kennzahlKachel('Plan eingehalten', p.tage ? p.eingehalten + ' von ' + p.tage : '–', [p.teilweise ? p.teilweise + ' teilweise' : '', p.tage ? 'Unterrichtstage mit Plan' : 'noch kein vergangener Tag mit Plan',
+      p.heute_offen ? 'heute noch offen' : ''].filter(Boolean).join(' · ')),
+    kennzahlKachel('Verschiebungen', String(k.verschiebungen.eigen), [k.verschiebungen.text, k.verschiebungen.ausfall ? 'dazu ' + k.verschiebungen.ausfall + ' durch Ausfall' : ''].filter(Boolean).join(' · ')),
+    kennzahlKachel('Wahlwechsel', String(k.wahlwechsel.anzahl), k.wahlwechsel.text),
+    kennzahlKachel('Empfehlungen', String(k.empfehlungen.anzahl), k.empfehlungen.anzahl ? k.empfehlungen.eingeplant + ' eingeplant, ' + k.empfehlungen.erledigt + ' erledigt, ' + k.empfehlungen.offen + ' offen' : ''),
+    kennzahlKachel('Hilfe gerufen', String(k.hilfe), ''));
+  const filter = el('select', { 'aria-label': 'Art der Einträge' }, el('option', { value: '', text: 'Alle Arten' }),
+    Object.keys(v.kategorien).filter(x => v.entscheidungen.some(e => e.kategorie === x)).map(x => el('option', { value: x, text: v.kategorien[x] })));
+  const liste = el('div', { class: 'liste-klein verlauf-liste' });
+  const fuellen = () => L.setzen(liste, v.entscheidungen.filter(e => !filter.value || e.kategorie === filter.value).map(e => el('div', {},
+    el('span', { class: 'dat', text: L.tag(e.zeit) + ' ' + e.zeit.slice(11, 16) }),
+    el('span', {}, Raster.ereignisText(e), e.marke ? el('span', { class: 'd-tag ' + e.marke[0], text: e.marke[1] }) : null,
+      e.wer_art === 'lehrkraft' ? el('span', { class: 'leise', text: ' (' + e.wer.toUpperCase() + ')' }) : null))));
+  filter.addEventListener('change', fuellen);
+  fuellen();
+  return [
+    el('div', { class: 'karte stapel' }, el('div', { class: 'zeile' }, el('h2', { text: 'Plan und Verlauf' }),
+      v.optionen.length ? el('label', { class: 'zeile rechts klein', style: 'gap:6px' }, 'Vergleichen mit Stand am', wahl) : el('span', { class: 'rechts leise klein', text: 'Vergleich ab dem zweiten Tag mit Plan' })),
+    kacheln),
+    d.plan.pakete.length ? Raster.zeichnen(d.plan, { bearbeitbar: false, schatten: v.stand ? v.schatten : null, marken: v.marken }) : el('div', { class: 'leer', text: 'Noch kein freigegebenes Paket.' }),
+    el('div', { class: 'karte stapel' }, el('div', { class: 'zeile' }, el('h2', { text: 'Entscheidungen' }), el('span', { class: 'rechts' }, filter)),
+      v.entscheidungen.length ? liste : el('p', { class: 'leise', text: 'Noch keine Einträge.' })),
+  ];
+}
+
+async function schuelerZeigen(kid, sid, reiter, stand) {
   const [d, r] = await Promise.all([L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/plan'),
     L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/rueckmeldungen')]);
   const name = d.schueler.vorname + ' ' + d.schueler.nachname;
@@ -359,6 +407,7 @@ async function schuelerZeigen(kid, sid, reiter) {
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: name }),
       r.darf ? el('button', { type: 'button', class: 'haupt', onclick: () => Rueck.oeffnen({ schueler: sid, danach: zeigen }) }, L.symbol('rueck'), 'Rückmeldung schreiben') : null,
       r.darf ? el('button', { type: 'button', onclick: async () => { if (await Rueck.empfehlen(sid, d.schueler.vorname)) zeigen(); } }, L.symbol('stern'), 'Aufgabe empfehlen') : null,
+      el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + kid + '/schueler/' + sid + '/bericht.pdf') }, L.symbol('laden'), 'Lernstand-Bericht (PDF)'),
       el('a', { class: 'knopf', href: '#uebersicht/' + kid, text: 'zur Übersicht' })),
     el('nav', { class: 'reiter' }, REITER.map(([a, t]) => el('a', { href: basis + '/' + a, class: a === reiter ? 'an' : null, text: t,
       'aria-current': a === reiter ? 'page' : null })))];
@@ -422,26 +471,29 @@ async function schuelerZeigen(kid, sid, reiter) {
       x.empfehlungen.length ? el('div', { class: 'leise klein', text: 'Empfohlen: ' + x.empfehlungen.map(e => (e.aufgabe ? e.aufgabe.kuerzel : '') + (e.verbindlich ? ' (verbindlich)' : '')).join(', ') }) : null))
       : el('div', { class: 'leer', text: 'Noch keine Rückmeldung.' })));
   } else {
-    const zv = (await L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/zeitplan')).eintraege;
-    teile.push(d.plan.pakete.length ? Raster.zeichnen(d.plan, { bearbeitbar: false }) : el('div', { class: 'leer', text: 'Noch kein freigegebenes Paket.' }),
-      zv.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Nicht im Zeitplan' }),
-        el('div', { class: 'liste-klein' }, zv.map(e => el('div', {}, el('span', { class: 'dat', text: L.tag(e.datum) }),
+    const [zv, v] = await Promise.all([L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/zeitplan'),
+      L.api('GET', '/api/klassen/' + kid + '/schueler/' + sid + '/verlauf' + (stand ? '?stand=' + encodeURIComponent(stand) : ''))]);
+    const vt = verlaufTeile(d, v, kid, sid);
+    teile.push(vt[0], vt[1],
+      zv.eintraege.length ? el('div', { class: 'karte stapel' }, el('h2', { text: 'Nicht im Zeitplan' }),
+        el('div', { class: 'liste-klein' }, zv.eintraege.map(e => el('div', {}, el('span', { class: 'dat', text: L.tag(e.datum) }),
           el('span', {}, el('b', { text: e.kuerzel + ' ' }), e.text, el('span', { class: 'leise klein', text: e.aufgehoben ? ' · später umgefärbt' : e.gesehen ? ' · gesehen' : ' · neu' })))))) : null,
-      el('div', { class: 'karte stapel' }, el('h2', { text: 'Entscheidungen' }),
-        el('p', { class: 'leise klein', text: 'Die letzten Einträge. Vergleich mit früheren Ständen und Kennzahlen kommen mit Stufe F.' }),
-        d.entscheidungen.length ? el('div', { class: 'liste-klein' }, d.entscheidungen.map(e => el('div', {},
-          el('span', { class: 'dat', text: L.tag(e.zeit) + ' ' + e.zeit.slice(11, 16) }), Raster.ereignisText(e),
-          e.wer_art === 'lehrkraft' ? el('span', { class: 'leise', text: ' (' + e.wer.toUpperCase() + ')' }) : null)))
-          : el('p', { class: 'leise', text: 'Noch keine Einträge.' })));
+      vt[2]);
   }
   L.setzen(inhalt, teile);
 }
 
 // --- Klassen ---
 
+function loeschChip(k) {
+  if (!k.archiviert || !k.loeschen_ab) return null;
+  return k.loeschen_faellig ? el('span', { class: 'chip rot klein', text: 'Löschen fällig seit ' + L.tag(k.loeschen_ab, true) })
+    : el('span', { class: 'chip klein', text: 'löschen ab ' + L.tag(k.loeschen_ab, true) });
+}
+
 function klassenKarte(k) {
   return el('a', { class: 'karte klassenkarte', href: '#klasse/' + k.id },
-    el('div', { class: 'zeile' }, el('h3', { text: k.name }), el('span', { class: 'rechts' }, rolleChip(k.rolle))),
+    el('div', { class: 'zeile' }, el('h3', { text: k.name }), el('span', { class: 'rechts' }, k.archiviert ? loeschChip(k) : rolleChip(k.rolle))),
     el('div', { class: 'leise klein', text: [k.schuljahr, k.anzahl_schueler + ' Schüler'].filter(Boolean).join(' · ') }),
     el('div', { class: 'klein' }, 'Team: ', k.team.map(t => t.kuerzel.toUpperCase()).join(', ') || '–',
       k.einsicht.length ? ' · Einsicht: ' + k.einsicht.map(t => t.kuerzel.toUpperCase()).join(', ') : ''));
@@ -450,9 +502,12 @@ function klassenKarte(k) {
 async function klassenZeigen(archiv) {
   titelSetzen(archiv ? 'Archiv' : 'Klassen');
   const { klassen } = await L.api('GET', '/api/klassen' + (archiv ? '?archiv=1' : ''));
+  const faellig = archiv && klassen.some(k => k.loeschen_faellig);
   L.setzen(inhalt,
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: archiv ? 'Archivierte Klassen' : 'Klassen' }),
       archiv ? null : el('button', { class: 'haupt', type: 'button', onclick: klasseAnlegen }, L.symbol('plus'), 'Klasse')),
+    archiv ? el('p', { class: 'leise klein', text: 'Archivierte Klassen sind nur noch lesbar, die Zugangscodes gelten nicht mehr. Nach der Löschfrist sollen sie gelöscht werden; sichern Sie vorher bei Bedarf die Lernstand-Berichte als PDF.' }) : null,
+    faellig ? el('div', { class: 'banner warnung', text: 'Bei mindestens einer Klasse ist die Löschfrist abgelaufen. Bitte die Berichte sichern und die Klasse löschen.' }) : null,
     klassen.length ? el('div', { class: 'raster' }, klassen.map(klassenKarte))
       : el('div', { class: 'leer', text: archiv ? 'Keine archivierten Klassen.' : 'Noch keine Klasse. Eine Klasse entspricht einem Moodle-Kurs.' }));
 }
@@ -484,12 +539,23 @@ async function klasseZeigen(kid) {
   titelSetzen(k.name);
   const team = k.rolle === 'team';
   const zuordnen = team || k.rolle === 'admin';
+  const lesen = k.rolle === 'team' || k.rolle === 'einsicht';
   const kopf = el('div', { class: 'werkzeug' },
-    el('h1', { class: 'dreieck', text: k.name }), rolleChip(k.rolle), k.archiviert ? el('span', { class: 'chip', text: 'archiviert' }) : null,
+    el('h1', { class: 'dreieck', text: k.name }), k.archiviert ? el('span', { class: 'chip', text: 'archiviert' }) : rolleChip(k.rolle),
     team ? el('button', { type: 'button', onclick: () => moodleAssistent(k) }, L.symbol('hoch'), 'Moodle-Teilnehmerliste') : null,
     team ? el('button', { type: 'button', onclick: () => karten(k.id) }, L.symbol('laden'), 'QR-Karten (PDF)') : null,
     team ? el('button', { type: 'button', onclick: () => klasseBearbeiten(k) }, 'Bearbeiten') : null,
-    k.rolle !== 'admin' ? el('a', { class: 'knopf', href: '#pakete/' + k.id }, L.symbol('pakete'), 'Pakete') : null);
+    k.rolle !== 'admin' ? el('a', { class: 'knopf', href: '#pakete/' + k.id }, L.symbol('pakete'), 'Pakete') : null,
+    lesen ? el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + k.id + '/berichte.pdf' + (k.archiviert ? '?alle=1' : '')) }, L.symbol('laden'), 'Lernstand-Berichte (PDF)') : null,
+    lesen ? el('button', { type: 'button', onclick: () => pdfLaden('/api/klassen/' + k.id + '/uebersicht.pdf') }, L.symbol('laden'), 'Klassenübersicht (PDF)') : null,
+    k.darf_archiv && !k.archiviert ? el('button', { type: 'button', class: 'warnen', onclick: () => archivieren(k) }, L.symbol('archiv'), 'Archivieren …') : null);
+  const archivBanner = k.archiviert ? el('div', { class: 'banner' + (k.loeschen_faellig ? ' warnung' : '') + ' archiv-banner' },
+    el('div', {}, el('b', { text: 'Archiviert seit ' + L.tag(k.archiviert_am, true) + '.' }), ' Nur noch lesbar, die Zugangscodes gelten nicht mehr. ',
+      k.loeschen_faellig ? 'Die Löschfrist (' + k.loeschfrist_monate + ' Monate) ist seit ' + L.tag(k.loeschen_ab, true) + ' abgelaufen: bitte die Berichte sichern und die Klasse löschen.'
+        : 'Löschen ab ' + L.tag(k.loeschen_ab, true) + ' (Löschfrist ' + k.loeschfrist_monate + ' Monate).'),
+    k.darf_archiv ? el('div', { class: 'zeile' },
+      el('button', { type: 'button', class: 'klein', onclick: () => reaktivieren(k) }, 'Wieder aktivieren'),
+      el('button', { type: 'button', class: 'klein warnen', onclick: () => klasseLoeschen(k) }, 'Endgültig löschen …')) : null) : null;
 
   const personen = (liste, rolle) => el('div', { class: 'personen' }, liste.length ? liste.map(p =>
     el('span', { class: 'person' }, p.name + ' (' + p.kuerzel.toUpperCase() + ')',
@@ -503,7 +569,7 @@ async function klasseZeigen(kid) {
 
   const teile = [kopf];
   if (k.rolle === 'admin') {
-    teile.push(el('div', { class: 'banner', text: 'Sie sind hier nicht eingetragen. Als Admin sehen Sie nur die Lehrkräfte und können sie zuordnen.' }), lehrkraftKarte);
+    teile.push(archivBanner, el('div', { class: 'banner', text: 'Sie sind hier nicht eingetragen. Als Admin sehen Sie nur die Lehrkräfte und können sie zuordnen.' }), lehrkraftKarte);
     L.setzen(inhalt, teile);
     return;
   }
@@ -516,7 +582,7 @@ async function klasseZeigen(kid) {
     el('div', { class: 'daten leise klein', text: [k.schuljahr && 'Schuljahr ' + k.schuljahr, k.moodle_kurs && 'Moodle-Kurs: ' + k.moodle_kurs].filter(Boolean).join(' · ') || 'Kein Schuljahr eingetragen.' }),
     L.feld('Einschätzer der Kann-Listen', darstellung, 'gilt für alle Schüler der Klasse, umschalten geht jederzeit'));
 
-  teile.push(el('div', { class: 'zwei-spalten' }, lehrkraftKarte, einstellung), Tage.karte(k), schuelerKarte(k));
+  teile.push(archivBanner, el('div', { class: 'zwei-spalten' }, lehrkraftKarte, einstellung), k.archiviert ? null : Tage.karte(k), schuelerKarte(k));
   L.setzen(inhalt, teile);
 }
 
@@ -536,17 +602,49 @@ function schuelerKarte(k) {
       el('thead', {}, el('tr', {}, el('th', { text: 'Name' }), team ? el('th', { text: 'Zugangscode' }) : null, team ? el('th', {}) : null)),
       el('tbody', {}, aktiv.map(zeile), alt.length ? el('tr', {}, el('td', { colspan: 3, class: 'etikett', text: 'Archiviert' })) : null, alt.map(zeile))))
       : el('div', { class: 'leer', text: team ? 'Noch keine Schüler. Am einfachsten: „Moodle-Teilnehmerliste“ oben.' : 'Noch keine Schüler.' }),
-    team ? null : el('p', { class: 'leise klein', text: 'Zugangscodes sieht nur das Team der Klasse.' }));
+    team ? null : el('p', { class: 'leise klein', text: k.archiviert ? 'Archiviert: die Zugangscodes gelten nicht mehr.' : 'Zugangscodes sieht nur das Team der Klasse.' }));
 }
 
 async function klasseBearbeiten(k) {
   const f = klassenFelder(k);
-  const archiv = el('input', { type: 'checkbox', checked: k.archiviert });
   const ok = await L.dialog({
-    titel: 'Klasse bearbeiten', inhalt: [f.block, el('label', { class: 'haken' }, archiv, 'Klasse archivieren (Zugangscodes gelten dann nicht mehr)')],
-    speichern: () => L.api('POST', '/api/klassen/' + k.id, { name: f.name.value, schuljahr: f.schuljahr.value, moodle_kurs: f.kurs.value, archiviert: archiv.checked }),
+    titel: 'Klasse bearbeiten', inhalt: f.block,
+    speichern: () => L.api('POST', '/api/klassen/' + k.id, { name: f.name.value, schuljahr: f.schuljahr.value, moodle_kurs: f.kurs.value }),
   });
   if (ok) zeigen();
+}
+
+async function archivieren(k) {
+  const ok = await L.dialog({
+    titel: k.name + ' archivieren?', knopf: 'Archivieren', gefaehrlich: true,
+    inhalt: el('div', { class: 'stapel', style: 'gap:8px' },
+      el('p', { text: 'Am Schuljahresende: Die Klasse ist danach nur noch lesbar. Die Zugangscodes der Schüler gelten nicht mehr, künftige Termine werden abgesagt.' }),
+      el('p', { class: 'leise klein', text: 'Nach der Löschfrist (' + k.loeschfrist_monate + ' Monate) erinnert das Lernbüro ans Löschen. Wieder aktivieren geht bis dahin jederzeit.' })),
+    speichern: () => L.api('POST', '/api/klassen/' + k.id, { archiviert: true }),
+  });
+  if (ok) zeigen();
+}
+
+async function reaktivieren(k) {
+  const ok = await L.dialog({
+    titel: k.name + ' wieder aktivieren?', knopf: 'Wieder aktivieren',
+    inhalt: el('p', { text: 'Die Klasse lässt sich wieder bearbeiten, die bisherigen Zugangscodes gelten wieder.' }),
+    speichern: () => L.api('POST', '/api/klassen/' + k.id, { archiviert: false }),
+  });
+  if (ok) zeigen();
+}
+
+async function klasseLoeschen(k) {
+  const name = el('input', { required: true, autocomplete: 'off', placeholder: k.name });
+  const ok = await L.dialog({
+    titel: k.name + ' endgültig löschen?', knopf: 'Endgültig löschen', gefaehrlich: true,
+    inhalt: el('div', { class: 'stapel', style: 'gap:8px' },
+      el('p', { text: 'Gelöscht werden alle Schüler der Klasse mit Plänen, Verlauf, Kann-Listen, Rückmeldungen, Terminen und Ergebnissen, dazu die Pakete der Klasse. Das lässt sich nicht rückgängig machen.' }),
+      el('div', { class: 'zeile' }, el('button', { type: 'button', class: 'klein', onclick: () => pdfLaden('/api/klassen/' + k.id + '/berichte.pdf?alle=1') }, L.symbol('laden'), 'Vorher Lernstand-Berichte sichern (PDF)')),
+      L.feld('Zur Bestätigung den Namen der Klasse eingeben', name, k.name)),
+    speichern: () => L.api('POST', '/api/klassen/' + k.id + '/loeschen', { name: name.value }),
+  });
+  if (ok) { L.meldung(k.name + ' gelöscht (' + ok.geloescht + ' Schüler).'); location.hash = 'archiv'; }
 }
 
 async function lehrkraftHinzu(k) {
@@ -729,6 +827,7 @@ async function einstellungenZeigen() {
   titelSetzen('Einstellungen');
   const [e, u] = await Promise.all([L.api('GET', '/api/einstellungen'), L.api('GET', '/api/update')]);
   const adresse = el('input', { value: e.schueler_adresse, placeholder: e.vorschlag });
+  const frist = el('input', { type: 'number', min: 1, max: 60, value: e.loeschfrist_monate, style: 'max-width:100px' });
   const pruefung = u.pruefung || {};
   L.setzen(inhalt,
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Einstellungen' })),
@@ -741,6 +840,14 @@ async function einstellungenZeigen() {
         el('h2', { text: 'Adresse für die QR-Codes' }),
         el('p', { class: 'leise klein', text: 'Unter dieser Adresse öffnen die Schülergeräte ihren Plan (über HTTP, ohne Zertifikat). Leer lassen = die Adresse, unter der Sie gerade angemeldet sind: ' + e.vorschlag }),
         L.feld('Adresse', adresse), el('div', {}, el('button', { class: 'haupt', type: 'submit', text: 'Speichern' }))),
+      el('form', { class: 'karte stapel', onsubmit: async ev => {
+        ev.preventDefault();
+        try { await L.api('POST', '/api/einstellungen', { loeschfrist_monate: Number(frist.value) }); L.meldung('Gespeichert.'); }
+        catch (f) { L.meldung(f.message, true); }
+      } },
+        el('h2', { text: 'Löschfrist im Archiv' }),
+        el('p', { class: 'leise klein', text: 'So lange nach dem Archivieren bleiben die Daten einer Klasse lesbar. Danach erinnert das Lernbüro im Archiv ans Löschen (gelöscht wird nur von Hand). Vorschlag: 12 Monate; bitte mit der Datenschutzbeauftragten abstimmen.' }),
+        L.feld('Monate', frist), el('div', {}, el('button', { class: 'haupt', type: 'submit', text: 'Speichern' }))),
       el('div', { class: 'karte stapel' },
         el('h2', { text: 'Version und Update' }),
         el('p', {}, 'Installiert: ', el('b', { text: u.version }),
