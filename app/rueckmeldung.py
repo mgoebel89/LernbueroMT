@@ -87,6 +87,7 @@ def fertig_melden(con, schueler, aufgabe_id, kann=None, heute=None):
         raise RueckmeldungFehler("%s ist schon fertig gemeldet." % a["kuerzel"])
     if letzte and letzte[0] == "angenommen":
         raise RueckmeldungFehler("%s ist schon angenommen." % a["kuerzel"])
+    lernplan.vorher_pflicht(con, schueler["id"], aufgabe_id, a["kuerzel"], RueckmeldungFehler)
     werte = {}
     for k in _kann_der_aufgabe(con, aufgabe_id):
         roh = (kann or {}).get(str(k["id"]), (kann or {}).get(k["id"]))

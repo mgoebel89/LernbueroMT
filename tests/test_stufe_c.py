@@ -103,6 +103,9 @@ class Plan(unittest.TestCase):
         self.assertEqual(lernplan.entscheidungen(self.con, self.lena["id"])[0]["daten"]["grund"], "ausfall")
 
     def test_tagesabschluss_ist_und_ampel(self):
+        with self.assertRaisesRegex(lernplan.PlanFehler, "vorher"):    # P1 hat eine Kann-Liste: erst "vorher"
+            lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p1, "ampel": "g"}], HEUTE)
+        lernplan.kann_speichern(self.con, self.lena["id"], self.k1, self.p1, "vorher", 2)
         with db.transaktion(self.con):
             lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p1, "ampel": "g"}, {"aufgabe_id": self.p2, "ampel": "y"}], HEUTE)
             lernplan.tag_abschliessen(self.con, self.lena, [{"aufgabe_id": self.p2, "ampel": "r",

@@ -215,5 +215,51 @@ class Archiv(Basis):
         self.assertFalse(klassen.liste(self.con, self.kl, archiv=True)[0]["darf_archiv"])
 
 
+class KannPflicht(Basis):
+    """Kann-Liste "vorher" vor jedem Anfangen, "nachher" nur fuer fertig gemeldete Aufgaben, Hinweis in der Klassenmatrix."""
+
+    def test_markieren_und_fertig_brauchen_vorher(self):
+        with self.assertRaisesRegex(lernplan.PlanFehler, "„vorher“ für P1"):
+            lernplan.markieren(self.con, self.lena, self.p1, "2026-11-05", "g", HEUTE)          # ungeplant markieren
+        self.vorher(self.lena, self.p1)
+        with db.transaktion(self.con):
+            lernplan.markieren(self.con, self.lena, self.p1, "2026-11-05", "g", HEUTE)
+            lernplan.markieren(self.con, self.lena, self.p2, "2026-11-05", "y", HEUTE)          # P2 ohne Kann-Liste: frei
+        with db.transaktion(self.con):
+            lernplan.markieren(self.con, self.lena, self.p1, "2026-11-05", None, HEUTE)         # Farbe entfernen geht immer
+
+    def test_spaeter_verknuepfte_aussage(self):
+        with db.transaktion(self.con):
+            lernplan.planen(self.con, self.lena, self.p2, hinzu=["2026-11-09"], heute=HEUTE)
+            k3 = pakete.kann_anlegen(self.con, self.gob, self.pid, {"text": "Kolbenkraft berechnen", "aufgaben": [self.p2]})
+        with self.assertRaisesRegex(lernplan.PlanFehler, "„vorher“ für P2"):
+            lernplan.planen(self.con, self.lena, self.p2, hinzu=["2026-11-12"], heute=HEUTE)
+        with db.transaktion(self.con):
+            lernplan.planen(self.con, self.lena, self.p2, weg=["2026-11-09"], heute=HEUTE)          # wegnehmen geht
+        lena = next(z for z in lernplan.matrix(self.con, self.k, heute=HEUTE)["zeilen"] if z["name"] == "Lena Krämer")
+        self.assertFalse([h for h in lena["hinweise"] if "Kann" in h])                       # nichts mehr geplant: kein Hinweis
+        with db.transaktion(self.con):
+            self.con.execute("INSERT INTO plan (schueler_id, aufgabe_id, datum) VALUES (?, ?, '2026-11-09')", (self.lena["id"], self.p2))
+        lena = next(z for z in lernplan.matrix(self.con, self.k, heute=HEUTE)["zeilen"] if z["name"] == "Lena Krämer")
+        self.assertIn("Kann-Liste vorher fehlt (P2)", lena["hinweise"])
+        with db.transaktion(self.con):
+            lernplan.kann_einschaetzen(self.con, self.lena, k3, 1, aufgabe_id=self.p2, heute=HEUTE)
+            lernplan.planen(self.con, self.lena, self.p2, hinzu=["2026-11-12"], heute=HEUTE)
+
+    def test_nachher_nur_nach_fertigmelden_und_als_nachher_gespeichert(self):
+        with self.assertRaisesRegex(lernplan.PlanFehler, "fertig gemeldet"):
+            lernplan.kann_einschaetzen(self.con, self.jonas, self.k1, 3, art="nachher", aufgabe_id=self.p1, heute=HEUTE)
+        with db.transaktion(self.con):   # wie beim Teampartner: Meldung ohne eigene Einschaetzung "nachher"
+            self.con.execute("INSERT INTO meldung (schueler_id, aufgabe_id, zeit) VALUES (?, ?, ?)", (self.jonas["id"], self.p1, db.jetzt()))
+        jonas = next(z for z in lernplan.matrix(self.con, self.k, heute=HEUTE)["zeilen"] if z["name"] == "Jonas Weber")
+        self.assertIn("Kann-Liste nachher fehlt (P1)", jonas["hinweise"])
+        with db.transaktion(self.con):
+            lernplan.kann_einschaetzen(self.con, self.jonas, self.k1, 3, art="nachher", aufgabe_id=self.p1, heute=HEUTE)
+            lernplan.kann_einschaetzen(self.con, self.jonas, self.k2, 4, art="nachher", aufgabe_id=self.p1, heute=HEUTE)
+        arten = {z[0] for z in self.con.execute("SELECT art FROM kann_einschaetzung WHERE schueler_id = ?", (self.jonas["id"],))}
+        self.assertEqual(arten, {"nachher"})
+        self.assertEqual(self.zeile(self.p1, self.jonas)["kann_stand"], "fertig")
+
+
 if __name__ == "__main__":
     unittest.main()

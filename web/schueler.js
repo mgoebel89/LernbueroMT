@@ -190,6 +190,8 @@ function nachProblem(p) {
 let markLaeuft = 0, markUhr = null;
 async function markieren(aufgabeId, datum, ampel) {
   // die Zelle ist schon eingefärbt; neu gezeichnet wird erst, wenn eine Weile nicht mehr getippt wurde (Status, Scrollstand bleibt)
+  const r = alleZeilen().find(x => x.id === aufgabeId);
+  if (ampel && r && r.kann_stand === 'vorher' && !(await kannVorherFragen(r, 'arbeiten'))) { zeigen(); return; }
   if (ampel === 'r') { await rotFragen(aufgabeId, datum); return; }
   markLaeuft += 1;
   clearTimeout(markUhr);
@@ -219,21 +221,29 @@ async function rotFragen(aufgabeId, datum) {
 
 async function planen(aufgabeId, hinzu, weg) {
   const r = alleZeilen().find(x => x.id === aufgabeId);
-  if (r && hinzu.length && !r.plan.length && r.kann_stand === 'vorher') {   // vor dem ersten Planen: Kann-Liste vorher
-    if (!(await kannVorherFragen(r))) { zeigen(); return; }
+  if (r && hinzu.length && r.kann_stand === 'vorher') {   // vor dem Planen: Kann-Liste vorher (auch für später dazugekommene Aussagen)
+    if (!(await kannVorherFragen(r, 'planen'))) { zeigen(); return; }
   }
   try { await schritt('/plan', { aufgabe_id: aufgabeId, hinzu, weg }); }
   catch (e) { L.meldung(e.message, true); zeigen(); }
 }
 
-// Kann-Liste „vorher“ einer Aufgabe; Rückgabe true, wenn gespeichert
-async function kannVorherFragen(r) {
+// Kann-Liste „vorher“ einer Aufgabe; Rückgabe true, wenn gespeichert. Pflicht, bevor eine Aufgabe angefangen wird:
+// zweck 'planen' | 'arbeiten' (Farbe, Tagesabschluss) | 'melden' (Fertigmelden) | 'pflicht' (beim Öffnen der Seite)
+async function kannVorherFragen(r, zweck) {
   const werte = {};
   r.kann_liste.forEach(k => { if (k.vorher) werte[k.id] = k.vorher; });
+  const frage = {
+    planen: 'Bevor du ' + r.kuerzel + ' ' + r.titel + ' planst: Wie gut kannst du das jetzt schon?',
+    arbeiten: 'Bevor du mit ' + r.kuerzel + ' ' + r.titel + ' anfängst: Wie gut kannst du das jetzt schon?',
+    melden: 'Bevor du ' + r.kuerzel + ' ' + r.titel + ' fertig meldest, fehlt noch „vorher“: Wie gut konntest du das, bevor du angefangen hast?',
+    pflicht: 'Für ' + r.kuerzel + ' ' + r.titel + ' fehlt noch deine Einschätzung „vorher“: Wie gut konntest du das, bevor du angefangen hast?',
+  }[zweck || 'planen'];
   const ok = await L.dialog({
-    titel: 'Kann-Liste ' + r.kuerzel + ' · vorher', knopf: 'Speichern und planen',
+    titel: 'Kann-Liste ' + r.kuerzel + ' · vorher', knopf: zweck === 'planen' || !zweck ? 'Speichern und planen' : 'Speichern',
+    abbrechen: zweck === 'pflicht' ? 'Später' : 'Abbrechen',
     inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
-      el('p', { text: 'Bevor du ' + r.kuerzel + ' ' + r.titel + ' planst: Wie gut kannst du das jetzt schon?' }),
+      el('p', { text: frage }),
       zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
       r.kann_liste.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text), L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))),
     speichern: async () => {
@@ -299,6 +309,10 @@ function termineKarte() {
 }
 
 async function abschliessen() {
+  // erst die Kann-Liste „vorher“ der heute bearbeiteten Aufgaben, dann der Tagesabschluss (kein Fenster über dem Fenster)
+  for (const r of alleZeilen().filter(x => x.gewaehlt && x.kann_stand === 'vorher' && (x.plan.includes(z.heute) || x.ist[z.heute]))) {
+    if (!(await kannVorherFragen(r, 'arbeiten'))) { zeigen(); return; }
+  }
   const alle = alleZeilen().filter(r => r.gewaehlt && r.status !== 'angenommen');
   const wahl = {};
   const geplant = alle.filter(r => r.plan.includes(z.heute) || r.ist[z.heute]);
@@ -406,7 +420,7 @@ async function aufgabeOeffnen(r, g) {
 function planKacheln(r) {
   let geaendert = false;
   const tage = z.spalten.filter(t => t.datum >= z.heute && t.status !== 'ferien');
-  const vorherFehlt = !r.plan.length && r.kann_stand === 'vorher';
+  const vorherFehlt = r.kann_stand === 'vorher';
   const werte = {};
   r.kann_liste.forEach(k => { if (k.vorher) werte[k.id] = k.vorher; });
   const kachel = t => {
@@ -449,6 +463,10 @@ function planKacheln(r) {
 }
 
 async function fertigMelden(r) {
+  if (r.kann_stand === 'vorher') {
+    if (!(await kannVorherFragen(r, 'melden'))) { zeigen(); return; }
+    r = alleZeilen().find(x => x.id === r.id) || r;   // mit den gerade gespeicherten Werten „vorher“
+  }
   const kann = r.kann_liste || [];
   const werte = {};
   kann.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
@@ -737,6 +755,40 @@ function kannKarte(r) {
 
 // --- Fragen beim Öffnen: Einladung, Ausfall ---
 
+// Kann-Liste „nachher“ für eine fertig gemeldete Aufgabe, z. B. wenn der Teampartner für beide gemeldet hat
+async function kannNachherFragen(r) {
+  const werte = {};
+  r.kann_liste.forEach(k => { if (k.nachher) werte[k.id] = k.nachher; });
+  const ok = await L.dialog({
+    titel: 'Kann-Liste ' + r.kuerzel + ' · nachher', knopf: 'Speichern', abbrechen: 'Später',
+    inhalt: el('div', { class: 'stapel', style: 'gap:10px' },
+      el('p', { text: r.kuerzel + ' ' + r.titel + ' ist fertig gemeldet' + (r.team && r.team.partner ? ' (von euch beiden)' : '') + '. Wie sicher bist du jetzt?' }),
+      zahlen() ? el('div', { class: 'leise klein', text: '1 = muss noch viel üben · 4 = kann es perfekt' }) : null,
+      r.kann_liste.map(k => el('div', { class: 'ka' }, el('p', {}, 'Ich kann ' + k.text),
+        k.vorher ? el('div', { class: 'leise klein', text: 'Vorher: ' + L.stufeText(k.vorher, zahlen()) }) : null,
+        L.skala(werte[k.id], stufe => { werte[k.id] = stufe; }, zahlen())))),
+    speichern: async () => {
+      if (r.kann_liste.some(k => !werte[k.id])) throw new Error('Bitte schätze jede Kann-Aussage ein.');
+      for (const k of r.kann_liste) z = await api('/kann', { kann_id: k.id, aufgabe_id: r.id, stufe: werte[k.id], art: 'nachher' });
+      return true;
+    },
+  });
+  return !!ok;
+}
+
+// Beim Öffnen: fehlende Pflicht-Einschätzungen nachholen (angefangen ohne „vorher“, fertig gemeldet ohne „nachher“)
+const kannGefragt = new Set();
+async function kannPflichtFragen() {
+  const offen = alleZeilen().filter(r => r.gewaehlt && !kannGefragt.has(r.id) && r.kann_liste && r.kann_liste.length &&
+    (r.kann_stand === 'nachher' || (r.kann_stand === 'vorher' && (r.plan.length || Object.keys(r.ist).length))));
+  for (const r of offen) {
+    kannGefragt.add(r.id);
+    const ok = r.kann_stand === 'nachher' ? await kannNachherFragen(r) : await kannVorherFragen(r, 'pflicht');
+    if (!ok) break;   // „Später“: in dieser Sitzung nicht weiter fragen
+  }
+  if (offen.length) zeigen();
+}
+
 async function nachfragen() {
   if (z.einladungen && z.einladungen.length) { await einladungFragen(z.einladungen[0]); return; }
   if (z.hinweise.ausfall.length) {
@@ -752,6 +804,7 @@ async function nachfragen() {
     return;
   }
   if (z.ungelesen && location.hash !== '#rueck') L.meldung(z.ungelesen === 1 ? 'Du hast eine neue Rückmeldung.' : 'Du hast ' + z.ungelesen + ' neue Rückmeldungen.');
+  await kannPflichtFragen();
 }
 
 async function wahlFragen(r, g) {

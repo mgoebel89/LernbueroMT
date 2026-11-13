@@ -296,7 +296,8 @@ async function uebersichtZeigen(kid, pid) {
           r.zellen.map(c => zelle(r, c)),
           el('td', {}, r.ampel ? el('span', { class: 'ampel a-' + r.ampel }) : el('span', { class: 'ampel a-0' })),
           el('td', { class: 'mono klein', text: r.empfehlungen ? String(r.empfehlungen) : '–' }),
-          el('td', { class: 'hin' + (r.hinweis && r.hinweis !== 'noch nichts geplant' ? ' w' : ''), text: r.hinweis || '–' })))))),
+          el('td', { class: 'hin' + (r.hinweis && r.hinweis !== 'noch nichts geplant' ? ' w' : ''), title: (r.hinweise || []).join(String.fromCharCode(10)) || null },
+            r.hinweis || '–', r.hinweise && r.hinweise.length > 1 ? el('span', { class: 'leise klein', text: ' +' + (r.hinweise.length - 1) }) : null)))))),
       el('p', { class: 'leise klein', text: '„Ampel“ zeigt die schlechteste Ampel der laufenden Aufgaben, „Emp.“ zählt offene Empfehlungen. Ein Klick auf ein „!“ öffnet die Rückmeldung, ein Klick auf den Namen die Schülerseite. Die Seite aktualisiert sich von selbst.' }));
   L.setzen(inhalt,
     el('div', { class: 'werkzeug' }, el('h1', { class: 'dreieck', text: 'Übersicht' }), kw, m.pakete.length ? pw : null),

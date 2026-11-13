@@ -79,6 +79,16 @@ def kann_vorher_fehlt(con, schueler_id, aufgabe_id):
         (aufgabe_id, schueler_id, aufgabe_id))]
 
 
+VORHER_FEHLT = "Bitte schätze zuerst die Kann-Liste „vorher“ für %s ein."
+
+
+def vorher_pflicht(con, schueler_id, aufgabe_id, kuerzel, fehler=None):
+    """Wer mit einer Aufgabe anfaengt (planen, als bearbeitet markieren, Tag abschliessen, fertig melden), braucht vorher
+    die Einschaetzung "vorher" fuer alle ihre Kann-Aussagen, auch fuer Aussagen, die die Lehrkraft spaeter verknuepft hat."""
+    if kann_vorher_fehlt(con, schueler_id, aufgabe_id):
+        raise (fehler or PlanFehler)(VORHER_FEHLT % kuerzel)
+
+
 def _stand(con, schueler_id, klasse_id=None):
     """Plan, Ist, Wahl, letzte Meldung je Aufgabe (ohne zurueckgezogene), eigene Fristen ("ueberarbeiten bis") und
     freigegebene Empfehlungen des Schuelers."""
@@ -290,8 +300,8 @@ def planen(con, schueler, aufgabe_id, hinzu=(), weg=(), grund=None, heute=None, 
         if not ut.findet_statt(t):
             raise PlanFehler("Am %s ist kein Unterricht (%s)." % (d, t["grund"]))
     vorher = {z[0] for z in con.execute("SELECT datum FROM plan WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aufgabe_id))}
-    if hinzu and not vorher and grund is None and kann_vorher_fehlt(con, schueler["id"], aufgabe_id):
-        raise PlanFehler("Bitte schätze zuerst die Kann-Liste „vorher“ für %s ein." % a["kuerzel"])
+    if hinzu and grund is None:   # Ausfall und Teampartner: der Plan wird mitgeschoben, die Pflicht kommt beim Partner spaeter
+        vorher_pflicht(con, schueler["id"], aufgabe_id, a["kuerzel"])
     neu = [d for d in hinzu if d not in vorher]
     raus = [d for d in weg if d in vorher]
     con.executemany("INSERT OR IGNORE INTO plan (schueler_id, aufgabe_id, datum) VALUES (?, ?, ?)", [(schueler["id"], aufgabe_id, d) for d in neu])
@@ -395,6 +405,7 @@ def tag_abschliessen(con, schueler, eintraege, heute=None):
         a = _aufgabe_sichtbar(con, schueler, aid, heute)
         if a["art"] == "wahl" and not con.execute("SELECT 1 FROM wahl WHERE schueler_id = ? AND aufgabe_id = ?", (schueler["id"], aid)).fetchone():
             raise PlanFehler("Wähle die Aufgabe zuerst.")
+        vorher_pflicht(con, schueler["id"], aid, a["kuerzel"])
         if e["ampel"] == "r":
             try:
                 problem = zeitplan.pruefen(e.get("problem"))
@@ -438,6 +449,8 @@ def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None, problem=None)
         raise PlanFehler("Wähle die Aufgabe zuerst.")
     if ampel not in AMPELN + (None,):
         raise PlanFehler("Ungültige Farbe.")
+    if ampel:
+        vorher_pflicht(con, schueler["id"], aufgabe_id, a["kuerzel"])
     d = ut.datum(datum)
     if d > heute or d < heute - MARKIEREN_TAGE * TAG:
         raise PlanFehler("Markieren geht für heute und die letzten %d Tage." % MARKIEREN_TAGE)
@@ -463,7 +476,8 @@ def markieren(con, schueler, aufgabe_id, datum, ampel, heute=None, problem=None)
 
 
 def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None, aufgabe_id=None):
-    """Einschaetzung "vorher" je Aufgabe (vor dem ersten Planen); aufgabe_id muss mit der Kann-Aussage verknuepft sein."""
+    """Einschaetzung je Aufgabe: "vorher" (vor dem Anfangen, aendern bis zum Fertigmelden) oder "nachher" (nur fuer eine
+    fertig gemeldete Aufgabe, z. B. als Teampartner nachtragen); aufgabe_id muss mit der Kann-Aussage verknuepft sein."""
     heute = _heute(heute)
     try:
         stufe = int(stufe)
@@ -482,6 +496,9 @@ def kann_einschaetzen(con, schueler, kann_id, stufe, art="vorher", heute=None, a
     a = _aufgabe_sichtbar(con, schueler, aufgabe_id, heute)
     if not con.execute("SELECT 1 FROM kann_aufgabe WHERE kann_id = ? AND aufgabe_id = ?", (kann_id, aufgabe_id)).fetchone():
         raise PlanFehler("Diese Kann-Aussage gehört nicht zu %s." % a["kuerzel"])
+    if art == "nachher" and not con.execute("SELECT 1 FROM meldung WHERE schueler_id = ? AND aufgabe_id = ? AND status IN ('offen', 'angenommen')",
+                                            (schueler["id"], aufgabe_id)).fetchone():
+        raise PlanFehler("„Nachher“ schätzt du ein, wenn %s fertig gemeldet ist." % a["kuerzel"])
     kann_speichern(con, schueler["id"], kann_id, aufgabe_id, art, stufe)
     _log(con, schueler, "kann_" + art, kann_id=kann_id, kuerzel=k["kuerzel"], aufgabe=a["kuerzel"], stufe=stufe)
 
@@ -509,12 +526,14 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
         spalten.append({"typ": "nachweis", "id": n["id"], "kuerzel": "GN", "titel": nachweise.ART_TEXT[n["art"]] + (" · " + n["titel"] if n["titel"] else ""),
                         "art": n["art"]})
     zeilen = []
+    kann_aktiv = {k["id"] for k in s["kann"]}
     team_hinweise = teams.matrix_hinweise(con, klasse_id, p["id"])
     rot_hinweise = zeitplan.offen_je_schueler(con, klasse_id)
     for sch in con.execute("SELECT * FROM schueler WHERE klasse_id = ? AND aktiv = 1 ORDER BY nachname, vorname", (klasse_id,)).fetchall():
         st_alle = _stand(con, sch["id"], klasse_id)
         wahl = st_alle["wahl"]
-        zellen, hinweise, ampeln = [], [], []
+        kw = kann_werte(con, sch["id"])
+        zellen, hinweise, ampeln, kann_hinweise = [], [], [], []
         for sp in spalten:
             if sp["typ"] == "nachweis":
                 c = nachweise.matrix_zelle(con, sch["id"], sp, heute)
@@ -540,20 +559,33 @@ def matrix(con, klasse_id, paket_id=None, heute=None):
                                "aufgabe_id": a["id"], "meldung_id": st["meldung"]["id"] if st["meldung"] else None})
                 if st["plant_nach_frist"]:
                     hinweise.append("plant %s nach der Frist" % a["kuerzel"])
+            fehlt = _kann_fehlt(kw, a, kann_aktiv, st["status"])
+            if fehlt:
+                kann_hinweise.append("Kann-Liste %s fehlt (%s)" % (fehlt, a["kuerzel"]))
             if st["status"] in LAUFEND:
                 if st["ampel_alt"]:
                     hinweise.append("Ampel %s älter als 1 Woche" % a["kuerzel"])
                 else:
                     ampeln.append(st["ampel"])
-        hinweise = rot_hinweise.get(sch["id"], []) + hinweise
+        hinweise = rot_hinweise.get(sch["id"], []) + hinweise + kann_hinweise
         schlechteste = next((x for x in ("r", "y", "g") if x in ampeln), None)
         offen_emp = sum(1 for liste in st_alle["emp"].values() for e in liste if not e["erledigt"])
         zeilen.append({"id": sch["id"], "name": "%s %s" % (sch["vorname"], sch["nachname"]), "zellen": zellen, "ampel": schlechteste,
-                       "empfehlungen": offen_emp, "teams": team_hinweise.get(sch["id"], []),
+                       "empfehlungen": offen_emp, "teams": team_hinweise.get(sch["id"], []), "hinweise": hinweise,
                        "hinweis": hinweise[0] if hinweise else ("noch nichts geplant" if all(z["status"] in ("offen", "fehlt") for z in zellen if not z.get("nachweis")) else "")})
     return {"pakete": [{"id": x["id"], "titel": x["titel"], "freigabe": x["freigabe"]} for x in alle],
             "paket": {"id": p["id"], "titel": p["titel"], "freigabe": p["freigabe"]}, "spalten": [
                 {k: v for k, v in sp.items() if k != "aufgaben"} for sp in spalten], "zeilen": zeilen}
+
+
+def _kann_fehlt(kw, a, kann_aktiv, status):
+    """Fuer die Klassenmatrix: 'vorher' (angefangen ohne vorher), 'nachher' (fertig gemeldet ohne nachher) oder None."""
+    ids = [k for k in a["kann"] if k in kann_aktiv]
+    if not ids or status == "offen":
+        return None
+    if status in ("fertig", "angenommen"):
+        return "nachher" if any((k, a["id"], "nachher") not in kw for k in ids) else None
+    return "vorher" if any((k, a["id"], "vorher") not in kw for k in ids) else None
 
 
 def entscheidungen(con, schueler_id, grenze=200):

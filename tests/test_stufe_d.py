@@ -45,6 +45,11 @@ class Basis(unittest.TestCase):
         self.con.close()
         shutil.rmtree(self.ordner, ignore_errors=True)
 
+    def vorher(self, s, aid, stufe=2):
+        """Kann-Liste "vorher" fuer eine Aufgabe ausfuellen (Pflicht vor Markieren, Tagesabschluss und Fertigmelden)."""
+        for kid in lernplan.kann_vorher_fehlt(self.con, s["id"], aid):
+            lernplan.kann_speichern(self.con, s["id"], kid, aid, "vorher", stufe)
+
     def zeile(self, aid, s=None, heute=HEUTE):
         z = lernplan.zustand(self.con, s or self.lena, heute)
         return next(r for p in z["pakete"] for r in p["zeilen"] if r["typ"] == "aufgabe" and r["id"] == aid)
@@ -53,9 +58,13 @@ class Basis(unittest.TestCase):
 class Rueckmeldung(Basis):
     def melden(self, kann=None):
         with db.transaktion(self.con):
+            self.vorher(self.lena, self.p1)
             return rm.fertig_melden(self.con, self.lena, self.p1, kann if kann is not None else {self.k1: 3, self.k2: 2}, HEUTE)
 
     def test_fertig_melden_braucht_alle_kann_aussagen(self):
+        with self.assertRaisesRegex(rm.RueckmeldungFehler, "„vorher“ für P1"):     # ohne "vorher" kein Fertigmelden
+            rm.fertig_melden(self.con, self.lena, self.p1, {self.k1: 3, self.k2: 2}, HEUTE)
+        self.vorher(self.lena, self.p1)
         with self.assertRaisesRegex(rm.RueckmeldungFehler, "alle Kann-Aussagen"):
             rm.fertig_melden(self.con, self.lena, self.p1, {self.k1: 3}, HEUTE)
         mid = self.melden()
@@ -151,6 +160,7 @@ class Rueckmeldung(Basis):
     def test_abwaehlen_nach_fertig_gesperrt_und_freie_empfehlung(self):
         with db.transaktion(self.con):
             lernplan.waehlen(self.con, self.lena, self.a1, heute=HEUTE)
+            self.vorher(self.lena, self.a1)
             rm.fertig_melden(self.con, self.lena, self.a1, {self.k2: 3}, HEUTE)
         with self.assertRaisesRegex(lernplan.PlanFehler, "fertig gemeldet"):
             lernplan.waehlen(self.con, self.lena, self.a1, False, heute=HEUTE)
@@ -265,6 +275,7 @@ class Gespraech(Basis):
                                                                          "gueltig_von": "2026-11-05", "gueltig_bis": "2026-12-17"})["zeitfenster"]
             termine.zeitfenster_anlegen(self.con, self.sch, self.k, {"art": "sprech", "von": "11:00", "bis": "11:30", "dauer": 10,
                                                                     "gueltig_von": "2026-11-05", "gueltig_bis": "2026-12-17"})
+            self.vorher(self.lena, self.p1)
             mid = rm.fertig_melden(self.con, self.lena, self.p1, {self.k1: 3, self.k2: 2}, HEUTE)
         plaetze = termine.gespraech_plaetze(self.con, self.gob, mid, HEUTE, "09:00")
         self.assertEqual({p["zeitfenster_id"] for p in plaetze}, {zf["id"]})                 # nur die eigene Sprechzeit
